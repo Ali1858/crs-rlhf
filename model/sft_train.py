@@ -245,5 +245,5 @@ def main():
     tokenizer.save_pretrained(output_dir)
 
 
-if __name__ == "__main__":
-    main()
+
+

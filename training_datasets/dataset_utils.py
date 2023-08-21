@@ -2,9 +2,11 @@ from functools import partial
 
 import numpy as np
 from sklearn.model_selection import train_test_split
-from torch.utils.data import ConcatDataset, Subset
+from torch.utils.data import ConcatDataset, Subset, Dataset
 
-from config import SFT_DATASET_CONFIG,CACHE_DIR
+from oasst_data import ExportMessageNode, read_dataset_message_trees, visit_threads_depth_first
+
+from config import SFT_DATASET_CONFIG,RM_DATASET_CONFIG, CACHE_DIR
 from constants import RANDOM_SEED
 
 
@@ -81,26 +83,148 @@ def train_val_dataset(dataset, name='unknown',val_split=0.2, max_val_set=None):
         subset_indices = np.random.choice(len(eval_subset), size=max_val_set, replace=False)
         eval_subset = Subset(eval_subset, subset_indices)
     print(f'Size of {name} training data: {len(train_subset)}')
-    print(f'Size of {name} training data: {len(eval_subset)}')
+    print(f'Size of {name} validation data: {len(eval_subset)}')
     return train_subset, eval_subset
 
 
+class ListDataset(Dataset):
+    def __init__(self, data: list):
+        super().__init__()
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        return self.data[index]
+    
+
+"""Rewritten from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
+"""
+def load_oasst(mode="sft",
+               lang="en",
+               top_k=None):
+    if mode not in ("sft", "rm", "rl"):
+        raise ValueError(f"Unknown dataset mode: {mode}")
+    
+    lang_codes: list[str] = lang.split(",")
+
+    threads_per_tree = []
+    tree_iter = read_dataset_message_trees("OpenAssistant/oasst1",split="train+validation")
+    
+    for tree in tree_iter:
+        if tree.tree_state != "ready_for_export" or not tree.prompt.review_result or tree.prompt.lang not in lang_codes:
+            continue
+
+        if mode in ("sft", "rm"):
+            if tree.tree_state != "ready_for_export":
+                continue
+        elif mode == "rl":
+            if tree.tree_state not in ("ready_for_export", "prompt_lottery_waiting"):
+                continue
+
+        # extract all threads up to last assistant reply
+        threads: list[list[ExportMessageNode]] = []
+            
+        def thread_filter(thread: list[ExportMessageNode]) -> bool:
+            if any(m.deleted or m.synthetic for m in thread):
+                return False
+
+            if top_k is not None:
+                for i, m in enumerate(thread):
+                    if m.role == "assistant":
+                        if m.rank is None:
+                            if i > 0 and len(thread[i - 1].replies) > 1:
+                                return False
+                        elif m.rank >= top_k:
+                            return False
+            return True
+
+
+        def leaf_filter(thread: list[ExportMessageNode]) -> bool:
+                if mode == "sft":
+                    # in SFT mode `not thread[-1].replies` finds nodes without children (leaves).
+                    # We are interested in those which are role='assistant' but some trees don't end on assistant nodes
+                    # but have prompter leaves .. we want to use those trees too .. e.g. remove the last prompter message(s)
+                    # so that they end with assistant. The `thread[-2].replies[0] == thread[-1]` check makes sure that only
+                    # the FIRST prompter reply is added .. e.g. the parent does not appear multiple times and we can use
+                    # pop() to remove superfluous prompter leaf node later.
+                    return (
+                        len(thread) > 1
+                        and not thread[-1].replies
+                        and (thread[-1].role == "assistant" or thread[-2].replies[0] == thread[-1])
+                        and thread_filter(thread)
+                    )
+                elif mode == "rm":
+                    # for reward models we use thread-fragments ending on prompter messages as prefix and
+                    # their (ranked) replies as possible continuations.
+                    if thread[-1].replies is None:
+                        return False
+                    return (
+                        thread[-1].role == "prompter"
+                        and len([r for r in thread[-1].replies if r.rank is not None]) > 1
+                        and thread_filter(thread)
+                    )
+                elif mode == "rl":
+                    # during rl we are interested in all possible prefixes ending in prompter messages
+                    return thread[-1].role == "prompter" and not any(m.deleted or m.synthetic for m in thread)
+
+                raise RuntimeError()
+
+        visit_threads_depth_first(tree.prompt, visitor=threads.append, predicate=leaf_filter)
+        if mode == "sft":
+            for t in threads:
+                if t[-1].role == "prompter":
+                    t.pop()
+        threads_per_tree.append(threads)
+    return threads_per_tree
+
+
 def load_sft_dataset(eos_token):
-    from training_datasets.sft_dataset import Vicuna, DatabrickDolly15k, AlpacaBaseDataset, MathInstruction
+    from training_datasets.sft_dataset import Vicuna, DatabrickDolly15k, AlpacaBaseDataset, MathInstruction, get_oasst_sft
     dataset_func_mapping  = {"vicuna": partial(Vicuna,input_max_length=1024),
                          "dolly": DatabrickDolly15k,
                          "alpaca": AlpacaBaseDataset,
                          "math_instruction":MathInstruction,
+                         "oasst_export":partial(get_oasst_sft, val_split=SFT_DATASET_CONFIG["oasst_export"]["val_split"],lang=SFT_DATASET_CONFIG["oasst_export"]["lang"])
                          }
-
     train_datasets = []
     evals = {}
 
     for ds_name, value in SFT_DATASET_CONFIG.items():
-        train_ds, val_ds = train_val_dataset(dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,eos_token=eos_token),name=ds_name,val_split=value["val_split"])
+        ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,eos_token=eos_token)
+        if len(ds) == 1:
+            train_ds, val_ds = train_val_dataset(ds,name=ds_name,val_split=value["val_split"])
+        else:
+            train_ds,val_ds = ds
         train_datasets.append(train_ds)
+        evals[ds_name] = val_ds
+    train = ConcatDataset(train_datasets)
+    return train,evals
 
-        if val_ds is not None:
-            evals[ds_name] = val_ds
+
+def load_rm_dataset():
+    from training_datasets.rm_dataset import AnthropicRLHF, HellaSwagDataset, SHPDataset, get_oasst_rm
+    dataset_func_mapping  = {
+                        "anthropic": AnthropicRLHF,
+                        "hellaswag": HellaSwagDataset,
+                        "shp":SHPDataset,
+                        "oasst_export":partial(get_oasst_rm, val_split=RM_DATASET_CONFIG["oasst_export"]["val_split"],lang=RM_DATASET_CONFIG["oasst_export"]["lang"])
+                        }
+    train_datasets = []
+    evals = {}
+
+    for ds_name, value in RM_DATASET_CONFIG.items():
+        if "splits" in value and len(value["splits"]) ==2:
+            train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=value["splits"][0])
+            val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=value["splits"][1])
+        else:
+            train_ds,val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR)
+
+        train_datasets.append(train_ds)
+        evals[ds_name] = val_ds
+        print(f'Size of {ds_name} training data: {len(train_ds)}')
+        print(f'Size of {ds_name} validation data: {len(val_ds)}')
     train = ConcatDataset(train_datasets)
     return train,evals
