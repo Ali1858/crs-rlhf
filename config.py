@@ -51,9 +51,9 @@ SFT_TRAINING_CONFIG = {
                 "weight_decay":0.0,
                 "dtype":"fp16",
                 "gradient_checkpointing":True,
-                "adam_beta1":"",
-                "adam_beta2":"",
-                "adam_epsilon":"",
+                "adam_beta1":0.9,
+                "adam_beta2":0.95,
+                "adam_epsilon":1e-15,
                 "resume_from_checkpoint":None,
                 "metrics":["accuracy"],
                 "peft_config": {

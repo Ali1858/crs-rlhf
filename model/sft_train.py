@@ -147,7 +147,7 @@ class SFTTrainer(Trainer):
         return dataloader
 
 
-def main():
+def train():
     # needs to happen before model loading in case of stage 3 training
     quantization = True
     optimizer = OptimizerNames.ADAMW_BNB if quantization else OptimizerNames.ADAMW_HF
@@ -240,9 +240,10 @@ def main():
         compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function),
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
-    trainer.train(resume_from_checkpoint=SFT_TRAINING_CONFIG["resume_from_checkpoint"])
-    trainer.save_model()
-    tokenizer.save_pretrained(output_dir)
+    return trainer
+    # trainer.train(resume_from_checkpoint=SFT_TRAINING_CONFIG["resume_from_checkpoint"])
+    # trainer.save_model()
+    # tokenizer.save_pretrained(output_dir)
 
 
 
