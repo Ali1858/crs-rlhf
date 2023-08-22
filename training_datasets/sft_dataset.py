@@ -4,10 +4,11 @@ https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom
 import re
 import random
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split
+from torch import Generator
 from datasets import load_dataset
 
-from training_datasets.dataset_utils import filter_by_words
+from training_datasets.dataset_utils import filter_by_words, load_oasst, ListDataset
 from constants import QA_SPECIAL_TOKENS
 
 # @agoryuno contributed this
@@ -23,18 +24,22 @@ LINKING_CHARS = ["\n", "\n\n", " "]
 
 def get_qa_formatted(
         eos_token,
-        questions,
-        answers,
+        questions=None,
+        answers=None,
         context=None,
-        system_msg=None
+        system_msg=None,
+        conversations=None
     ):
         output: list[str] = []
         
-        conversations = []
-        for q,a in zip(questions,answers):
-            conversations.append([q,"prompter"])
-            conversations.append([a,"assistant"])
-
+        if conversations is None:
+            assert answers,""
+            assert questions,""
+            conversations = []
+            for q,a in zip(questions,answers):
+                conversations.append([q,"prompter"])
+                conversations.append([a,"assistant"])
+        
 
         for i, m in enumerate(conversations):
             if m[1] == "prompter":
@@ -260,3 +265,48 @@ class AlpacaBaseDataset(Dataset):
     def __getitem__(self, index: int):
         dialogue = self.data[index]
         return dialogue
+
+
+class QADataset(Dataset):
+    def __init__(self, data: list,eos_token:str=''):
+        super().__init__()
+        self.data = data
+        self.eos_token = eos_token
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        conversations= self.data[index]
+        return get_qa_formatted(self.eos_token,
+                         conversations=conversations,
+                         )
+
+
+"""Rewritten from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
+"""
+def get_oasst_sft(val_split,cache_dir, eos_token,lang,manual_seed=90):
+    generator = Generator()
+    generator.manual_seed(manual_seed)
+    threads_per_tree = load_oasst(mode="sft",lang=lang)
+    def process_thread(thread):
+            # ensure roles are strictly alternating between prompter and assistant
+            assert all(m.role == "prompter" for m in thread[0::2]) and all(m.role == "assistant" for m in thread[1::2])
+            conversation: list[list] = [[m.text,m.role]for m in thread]
+            return conversation
+    
+    # split on tree basis, messages from same tree must not end up in different splits
+    trees = ListDataset(threads_per_tree,)
+    splits = random_split(trees, lengths=[1.0 - val_split, val_split], generator=generator)
+
+    def flatten(ds: ListDataset) -> QADataset:
+        return QADataset([process_thread(thread) for tree_threads in ds for thread in tree_threads],eos_token=eos_token)
+
+    train = flatten(splits[0])
+    val = flatten(splits[1])
+    print(f"OASST HF dataset: {len(train)=}, {len(val)=}")
+    return train,val
+
+    
+

@@ -1,13 +1,16 @@
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets"""
 
-from torch.utils.data import Dataset
-from datasets import load_dataset
-
 from typing import List
-
 from collections import defaultdict
 import numpy as np
+
+from torch.utils.data import Dataset, random_split
+
+from datasets import load_dataset
+from torch import Generator
+
+from training_datasets.dataset_utils import load_oasst, ListDataset
 
 SEED = 2020
 
@@ -47,10 +50,10 @@ class AnthropicRLHF(Dataset):
         return dialogue
     
 
-    def __init__(self,split="train"):
+    def __init__(self,cache_dir,split="train"):
         super().__init__()
         self.data = []
-        dataset = load_dataset("Anthropic/hh-rlhf")[split]
+        dataset = load_dataset("Anthropic/hh-rlhf",cache_dir=cache_dir)[split]
 
         for entry in dataset:
 
@@ -86,7 +89,7 @@ class SHPDataset(Dataset):
 
     name = "SHP"
 
-    def __init__(self, split="train", max_answers: int = 5):
+    def __init__(self, cache_dir,split="train", max_answers: int = 5):
         super().__init__()
 
         self.questions = []
@@ -94,7 +97,7 @@ class SHPDataset(Dataset):
 
         if not isinstance(split, list):
             split = [split]
-        dataset_splits = load_dataset("stanfordnlp/SHP", split=split)
+        dataset_splits = load_dataset("stanfordnlp/SHP", cache_dir=cache_dir,split=split)
 
         answers_by_id = defaultdict(dict)
         history_by_id = dict()
@@ -132,14 +135,14 @@ class HellaSwagDataset(Dataset):
 
     name = "hellaswag"
 
-    def __init__(self, split="train", seed = SEED):
+    def __init__(self,cache_dir, split="train", seed = SEED):
         super().__init__()
 
         np.random.seed(seed)
         self.dataset_list = []
         if not isinstance(split, List):
             split = [split]
-        dataset = load_dataset("AlekseyKorshuk/hellaswag", split=split)
+        dataset = load_dataset("AlekseyKorshuk/hellaswag", cache_dir=cache_dir,split=split)
         for data in dataset:
             for item in data:
                 context = item.get("ctx")
@@ -154,3 +157,44 @@ class HellaSwagDataset(Dataset):
     def __getitem__(self, idx):
         context, completions = self.dataset_list[idx].values()
         return None, [context + c for c in completions]
+    
+
+class RMDataset(Dataset):
+    def __init__(self, data: list,eos_token:str=''):
+        super().__init__()
+        self.data = data
+        self.eos_token = eos_token
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        prefix, replies = self.data[index]
+        return prefix,replies
+
+
+"""Rewritten from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
+"""
+def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90):
+    generator = Generator()
+    generator.manual_seed(manual_seed)
+    threads_per_tree = load_oasst(mode="rm",lang=lang)
+    def process_thread(thread):
+        prefix = [m.text for m in thread]
+        replies = [r for r in thread[-1].replies if r.role == "assistant" and r.rank is not None]
+        replies = sorted(replies, key=lambda r: r.rank)
+        replies = [r.text for r in replies]
+        return (prefix, replies)
+    
+    # split on tree basis, messages from same tree must not end up in different splits
+    trees = ListDataset(threads_per_tree,)
+    splits = random_split(trees, lengths=[1.0 - val_split, val_split], generator=generator)
+
+    def flatten(ds: ListDataset) -> RMDataset:
+        return RMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
+
+    train = flatten(splits[0])
+    val = flatten(splits[1])
+    print(f"OASST HF dataset: {len(train)=}, {len(val)=}")
+    return train,val

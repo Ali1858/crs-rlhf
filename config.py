@@ -18,8 +18,22 @@ SFT_DATASET_CONFIG = {"vicuna":
                     {
                      "val_split":0.2,
                     },
+                "oasst_export":
+                    {
+                     "val_split":0.2,
+                     "lang": "bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk"
+                    }
 
 }
+
+
+RM_DATASET_CONFIG = {
+                    "anthropic": {"splits":["train","test"]},
+                    "hellaswag": {"splits":["train","validation"]},
+                    "shp":{"splits":["train","validation"]},
+                    "oasst_export": {"val_split":0.2,"lang":"en"}#,es,de,fr"}
+                    }
+
 
 SFT_TRAINING_CONFIG = {
                 "cache_dir":CACHE_DIR,
@@ -37,9 +51,9 @@ SFT_TRAINING_CONFIG = {
                 "weight_decay":0.0,
                 "dtype":"fp16",
                 "gradient_checkpointing":True,
-                "adam_beta1":"",
-                "adam_beta2":"",
-                "adam_epsilon":"",
+                "adam_beta1":0.9,
+                "adam_beta2":0.95,
+                "adam_epsilon":1e-15,
                 "resume_from_checkpoint":None,
                 "metrics":["accuracy"],
                 "peft_config": {
