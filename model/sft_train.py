@@ -1,8 +1,9 @@
 """rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_sft.py
 """
+        
+import argparse
 from functools import partial
-import math
 
 import torch
 from torch import nn
@@ -16,8 +17,8 @@ import datasets
 from training_datasets.dataset_utils import load_sft_dataset
 from training_datasets.collators import DialogueDataCollator
 from model.training_utils import get_sft_model, get_sft_tokenizer, get_sft_metrics
-from config import SFT_TRAINING_CONFIG, DIALOGUE_COLLATOR_CONFIG, TOKENIZER_CONFIG
-
+from constants import TOKENIZER_SEPECIAL_TOKENS
+from utils import read_yaml, parse_additional_args, print_yaml_config
 
 
 def compute_metrics(eval_pred, preprocess_fns, metrics):
@@ -147,104 +148,121 @@ class SFTTrainer(Trainer):
         return dataloader
 
 
-def train():
+def main(conf,output_dir):
+    print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
+    print_yaml_config(conf)
     # needs to happen before model loading in case of stage 3 training
     quantization = True
-    optimizer = OptimizerNames.ADAMW_BNB if quantization else OptimizerNames.ADAMW_HF
+    optimizer =  OptimizerNames.ADAMW_BNB if quantization else OptimizerNames.ADAMW_HF
     
-    output_dir=f"{SFT_TRAINING_CONFIG['model_name']}-lora-finetuned"
-
     args = TrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=SFT_TRAINING_CONFIG["num_train_epochs"],
-        warmup_steps=SFT_TRAINING_CONFIG["warmup_steps"],
-        learning_rate=float(SFT_TRAINING_CONFIG["lr"]),
+        num_train_epochs=conf.num_train_epochs,
+        warmup_steps=conf.warmup_steps,
+        learning_rate=float(conf.lr),
         optim=optimizer,
-        fp16=SFT_TRAINING_CONFIG["dtype"] in ["fp16", "float16"],
-        bf16=SFT_TRAINING_CONFIG["dtype"] in ["bf16", "bfloat16"],
-        gradient_checkpointing=SFT_TRAINING_CONFIG["gradient_checkpointing"],
-        gradient_accumulation_steps=SFT_TRAINING_CONFIG["gradient_accumulation_steps"],
-        per_device_train_batch_size=SFT_TRAINING_CONFIG["train_batch"],
-        per_device_eval_batch_size=SFT_TRAINING_CONFIG["eval_batch"],
-        adam_beta1=SFT_TRAINING_CONFIG["adam_beta1"],
-        adam_beta2=SFT_TRAINING_CONFIG["adam_beta2"],
-        adam_epsilon=float(SFT_TRAINING_CONFIG["adam_epsilon"]),
-        weight_decay=SFT_TRAINING_CONFIG["weight_decay"],
-        logging_steps=SFT_TRAINING_CONFIG["log_steps"],
+        fp16=conf.dtype in ["fp16", "float16"],
+        bf16=conf.dtype in ["bf16", "bfloat16"],
+        gradient_checkpointing=conf.gradient_checkpointing,
+        gradient_accumulation_steps=conf.gradient_accumulation_steps,
+        per_device_train_batch_size=conf.train_batch,
+        per_device_eval_batch_size=conf.eval_batch,
+        adam_beta1=conf.adam_beta1,
+        adam_beta2=conf.adam_beta2,
+        adam_epsilon=float(conf.adam_epsilon),
+        weight_decay=conf.weight_decay,
+        logging_steps=conf.log_steps,
         evaluation_strategy="steps",
-        eval_steps=SFT_TRAINING_CONFIG["eval_steps"],
+        eval_steps=conf.eval_steps,
         save_strategy="steps",
-        save_steps=SFT_TRAINING_CONFIG["save_steps"],
-        eval_accumulation_steps=SFT_TRAINING_CONFIG["eval_accumulation_steps"],
-        resume_from_checkpoint=SFT_TRAINING_CONFIG["resume_from_checkpoint"],
+        save_steps=conf.save_steps,
+        eval_accumulation_steps=conf.eval_accumulation_steps,
+        resume_from_checkpoint=conf.resume_from_checkpoint,
         report_to="wandb",
     )
 
-    tokenizer, eos_token= get_sft_tokenizer(SFT_TRAINING_CONFIG,TOKENIZER_CONFIG)
-    train_ds , eval_ds = load_sft_dataset(eos_token)
-    model = get_sft_model(SFT_TRAINING_CONFIG)
-    metrics,preprocess_function = get_sft_metrics(SFT_TRAINING_CONFIG["metrics"])
+    tokenizer, eos_token= get_sft_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS)
+    train_ds , eval_ds = load_sft_dataset(conf,eos_token)
+    model = get_sft_model(tokenizer, conf)
+    metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
     train_collate_fn = DialogueDataCollator(
         tokenizer,
-        max_length=DIALOGUE_COLLATOR_CONFIG["max_length"],
-        random_offset_probability=DIALOGUE_COLLATOR_CONFIG["random_offset_probability"],
-        label_masking=DIALOGUE_COLLATOR_CONFIG["label_masking"],
-        samples_mixing=DIALOGUE_COLLATOR_CONFIG["samples_mixing"],
+        max_length=conf.collator["max_length"],
+        random_offset_probability=conf.collator["random_offset_probability"],
+        label_masking=conf.collator["label_masking"],
+        samples_mixing=conf.collator["samples_mixing"],
         pad_to_multiple_of=16,
-        use_system_prefix=DIALOGUE_COLLATOR_CONFIG["use_system_prefix"],
-        system_prefix=DIALOGUE_COLLATOR_CONFIG["system_prefix"],
+        use_system_prefix=conf.collator["use_system_prefix"],
+        system_prefix=conf.collator["system_prefix"],
     )
     
-    if DIALOGUE_COLLATOR_CONFIG.get("val_max_length") is None:
-        DIALOGUE_COLLATOR_CONFIG["val_max_length"] = DIALOGUE_COLLATOR_CONFIG["max_length"]
+    if conf.collator.get("val_max_length") is None:
+        conf.collator["val_max_length"] = conf.collator["max_length"]
     
     eval_collate_fn = DialogueDataCollator(
         tokenizer,
-        max_length=DIALOGUE_COLLATOR_CONFIG["val_max_length"],
-        random_offset_probability=DIALOGUE_COLLATOR_CONFIG["random_offset_probability"],
-        label_masking=DIALOGUE_COLLATOR_CONFIG["label_masking"],
+        max_length=conf.collator["val_max_length"],
+        random_offset_probability=conf.collator["random_offset_probability"],
+        label_masking=conf.collator["label_masking"],
         samples_mixing=False,
-        use_system_prefix=DIALOGUE_COLLATOR_CONFIG["use_system_prefix"],
-        system_prefix=DIALOGUE_COLLATOR_CONFIG["system_prefix"],
+        use_system_prefix=conf.collator["use_system_prefix"],
+        system_prefix=conf.collator["system_prefix"],
         )
     
     if quantization:
         import bitsandbytes  # This is noisy, so delay importing until after argument parsing so it doesn't make --help noisy
-        
         for module in model.modules():
             if isinstance(module, torch.nn.Embedding):
                 bitsandbytes.optim.GlobalOptimManager.get_instance().register_module_override(
                     module, "weight", {"optim_bits": 32}
                 )
         
-        import wandb
+    import wandb
 
-        wandb_name = SFT_TRAINING_CONFIG["model_name"]
-        wandb.init(
-            project="supervised-finetuning",
-            entity=None,
-            resume=SFT_TRAINING_CONFIG["resume_from_checkpoint"],
-            name=f"{wandb_name}--finetuned",
-            config=dict(**DIALOGUE_COLLATOR_CONFIG,**SFT_TRAINING_CONFIG),
-        )
-
-        trainer = SFTTrainer(
-        model=model,
-        args=args,
-        train_collate_fn=train_collate_fn,
-        train_dataset=train_ds,
-        eval_dataset=eval_ds,
-        data_collator=eval_collate_fn,
-        tokenizer=tokenizer,
-        compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function),
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+    wandb_name = conf["model_name"]
+    wandb.init(
+        project="supervised-finetuning",
+        entity=None,
+        resume=conf.resume_from_checkpoint,
+        name=f"{wandb_name}--finetuned",
+        config=dict(conf),
     )
+
+    trainer = SFTTrainer(
+    model=model,
+    args=args,
+    train_collate_fn=train_collate_fn,
+    train_dataset=train_ds,
+    eval_dataset=eval_ds,
+    data_collator=eval_collate_fn,
+    tokenizer=tokenizer,
+    compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function),
+    preprocess_logits_for_metrics=preprocess_logits_for_metrics,)
     return trainer
-    # trainer.train(resume_from_checkpoint=SFT_TRAINING_CONFIG["resume_from_checkpoint"])
-    # trainer.save_model()
-    # tokenizer.save_pretrained(output_dir)
 
 
+def train(trainer,output_dir,conf):
+    trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint)
+    trainer.save_model(output_dir)
+    trainer.tokenizer.save_pretrained(output_dir)
 
 
+if __name__ == "__main__":
+    config = {}
+    parser = argparse.ArgumentParser(description="Parse configuration")
+    parser.add_argument("--overrides", nargs='+', help="Override configurations (key=value)", default=[])
+    args, remaining = parser.parse_known_args()
+
+    overrides = dict(override.split('=') for override in args.overrides)
+    conf = read_yaml('./configs/sft_config.yaml')
+    config.update(conf["default"])
+    config.update(overrides)
+
+    parser = parse_additional_args(config)
+    args = parser.parse_args(remaining)
+
+    output_dir=f"{args.model_name}-lora-finetuned"
+
+    trainer = main(args,output_dir)
+    # train(trainer,output_dir,args)

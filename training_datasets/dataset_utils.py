@@ -6,8 +6,7 @@ from torch.utils.data import ConcatDataset, Subset, Dataset
 
 from oasst_data import ExportMessageNode, read_dataset_message_trees, visit_threads_depth_first
 
-from config import SFT_DATASET_CONFIG,RM_DATASET_CONFIG, CACHE_DIR
-from constants import RANDOM_SEED
+from constants import RANDOM_SEED, CACHE_DIR
 
 
 # mostly taken from
@@ -181,46 +180,48 @@ def load_oasst(mode="sft",
     return threads_per_tree
 
 
-def load_sft_dataset(eos_token):
+def load_sft_dataset(conf,eos_token):
     from training_datasets.sft_dataset import Vicuna, DatabrickDolly15k, AlpacaBaseDataset, MathInstruction, get_oasst_sft
-    dataset_func_mapping  = {"vicuna": partial(Vicuna,input_max_length=1024),
+    dataset_func_mapping  = {"vicuna": Vicuna,
                          "dolly": DatabrickDolly15k,
                          "alpaca": AlpacaBaseDataset,
                          "math_instruction":MathInstruction,
-                         "oasst_export":partial(get_oasst_sft, val_split=SFT_DATASET_CONFIG["oasst_export"]["val_split"],lang=SFT_DATASET_CONFIG["oasst_export"]["lang"])
+                         "oasst_export":get_oasst_sft
                          }
     train_datasets = []
     evals = {}
 
-    for ds_name, value in SFT_DATASET_CONFIG.items():
-        ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,eos_token=eos_token)
-        if len(ds) == 1:
-            train_ds, val_ds = train_val_dataset(ds,name=ds_name,val_split=value["val_split"])
+    for ds_name, dataset_kwargs in conf.dataset.items():
+        print(f'===loading the {ds_name} dataset===\n')
+        ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,eos_token=eos_token,**dataset_kwargs)
+        if type(ds) == tuple:
+            train_ds, val_ds = ds
         else:
-            train_ds,val_ds = ds
+            train_ds,val_ds = train_val_dataset(ds,name=ds_name,val_split=dataset_kwargs["val_split"])
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds
     train = ConcatDataset(train_datasets)
     return train,evals
 
-
-def load_rm_dataset():
+              
+def load_rm_dataset(conf):
     from training_datasets.rm_dataset import AnthropicRLHF, HellaSwagDataset, SHPDataset, get_oasst_rm
     dataset_func_mapping  = {
                         "anthropic": AnthropicRLHF,
                         "hellaswag": HellaSwagDataset,
                         "shp":SHPDataset,
-                        "oasst_export":partial(get_oasst_rm, val_split=RM_DATASET_CONFIG["oasst_export"]["val_split"],lang=RM_DATASET_CONFIG["oasst_export"]["lang"])
+                        "oasst_export":get_oasst_rm
                         }
     train_datasets = []
     evals = {}
 
-    for ds_name, value in RM_DATASET_CONFIG.items():
-        if "splits" in value and len(value["splits"]) ==2:
-            train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=value["splits"][0])
-            val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=value["splits"][1])
+    for ds_name, dataset_kwargs in conf.dataset.items():
+        print(f'===loading the {ds_name} dataset===\n')
+        if len(dataset_kwargs.get("splits",[])) ==2:
+            train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][0])
+            val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][1])
         else:
-            train_ds,val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR)
+            train_ds,val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,**dataset_kwargs)
 
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds

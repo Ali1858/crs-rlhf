@@ -99,7 +99,7 @@ class Vicuna(Dataset):
         return questions,answers
 
 
-    def __init__(self,cache_dir,eos_token,input_max_length=1024) -> None:
+    def __init__(self,cache_dir,eos_token,input_max_length=32*1024,**kwargs) -> None:
         super().__init__()
         
         dataset = load_dataset(
@@ -131,7 +131,7 @@ class Vicuna(Dataset):
 
 "Taken https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/qa_datasets.py#L570"
 class DatabrickDolly15k(Dataset):
-    def __init__(self,cache_dir,eos_token):
+    def __init__(self,cache_dir,eos_token,**kwargs):
         super().__init__()
 
         self.rows = []
@@ -165,7 +165,7 @@ class DatabrickDolly15k(Dataset):
 
 "Taken from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/instruction.py#L38"
 class MathInstruction(Dataset):
-    def __init__(self,cache_dir,eos_token,fill_min_length=None):
+    def __init__(self,cache_dir,eos_token,fill_min_length=None,**kwargs):
         super().__init__()
         self.rows = []
         self.eos_token = eos_token
@@ -227,7 +227,7 @@ class MathInstruction(Dataset):
 
 "Taken from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/qa_datasets.py#L426"
 class AlpacaBaseDataset(Dataset):
-    def __init__(self, cache_dir, eos_token, dataset_name="code_alpaca"):
+    def __init__(self, cache_dir, eos_token, dataset_name="code_alpaca",**kwargs):
         super().__init__()
         if dataset_name == "alpaca":
             dataset = load_dataset("yahma/alpaca-cleaned", cache_dir=cache_dir)
@@ -286,7 +286,7 @@ class QADataset(Dataset):
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
 """
-def get_oasst_sft(val_split,cache_dir, eos_token,lang,manual_seed=90):
+def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,**kwargs):
     generator = Generator()
     generator.manual_seed(manual_seed)
     threads_per_tree = load_oasst(mode="sft",lang=lang)
