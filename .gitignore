@@ -1,6 +1,5 @@
 cache
 *.pyc
 __pycache__
-*.yaml
 wandb
 .DS_Store

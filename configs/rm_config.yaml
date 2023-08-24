@@ -1,0 +1,17 @@
+default:
+  dataset:
+    anthropic:
+      splits:
+        - train
+        - test
+    hellaswag:
+      splits:
+        - train
+        - validation
+    shp:
+      splits:
+        - train
+        - validation
+    oasst_export:
+      val_split: 0.2
+      lang: en
