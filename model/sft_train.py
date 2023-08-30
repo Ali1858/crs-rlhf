@@ -209,15 +209,6 @@ def main(conf,output_dir):
         use_system_prefix=conf.collator["use_system_prefix"],
         system_prefix=conf.collator["system_prefix"],
         )
-    
-
-    # if conf.int8_training:
-    #     import bitsandbytes  # This is noisy, so delay importing until after argument parsing so it doesn't make --help noisy
-    #     for module in model.modules():
-    #         if isinstance(module, torch.nn.Embedding):
-    #             bitsandbytes.optim.GlobalOptimManager.get_instance().register_module_override(
-    #                 module, "weight", {"optim_bits": 32}
-    #             )
 
     if conf.debug:
         for module in model.modules():
