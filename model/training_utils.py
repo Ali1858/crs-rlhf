@@ -2,8 +2,9 @@ import math
 
 import evaluate
 import torch
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 import transformers
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
 from constants import QA_SPECIAL_TOKENS,CACHE_DIR
 
 
@@ -92,6 +93,41 @@ def get_sft_model(tokenizer,config,pad_vocab_size_to_multiple_of=16):
     return model
 
 
+def get_rm_model(tokenizer,config,pad_vocab_size_to_multiple_of=16):
+    """Rewritten from:
+    https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L282
+    https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/peft_modeling.py#L49
+    """
+    dtype = torch.float32
+    if config.dtype in ["fp16", "float16"]:
+        dtype = torch.float16
+    elif config.dtype in ["bf16", "bfloat16"]:
+        dtype = torch.bfloat16
+
+    peft_config = config.peft_config
+
+    model = transformers.AutoModelForSequenceClassification.from_pretrained(config.model_name, num_labels=1,torch_dtype=dtype,load_in_8bit=config.int8_training, cache_dir=CACHE_DIR)
+    n_embs = model.get_input_embeddings().num_embeddings
+    
+    if config.debug:
+        print(f'=== model:/n{model}/n===')
+        for name, param in model.named_parameters():
+            if (param.dtype == torch.float16) or (param.dtype == torch.bfloat16):
+                print(name)
+    
+    if peft_config.get("target_modules") == "all":
+        peft_config.update({"target_modules": get_all_linear_layers(model)})
+    lora_config = LoraConfig(**peft_config)
+    
+    if config.int8_training:
+        model = prepare_model_for_kbit_training(model,use_gradient_checkpointing=config.gradient_checkpointing)
+    model = get_peft_model(model, lora_config)
+    print(f'model prepared with int_8 training: {config.int8_training} and dtype {dtype}')
+    model.print_trainable_parameters()
+    return model
+
+
+
 def get_sft_metrics(metrics):
     """Taken from:
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L301
@@ -99,7 +135,7 @@ def get_sft_metrics(metrics):
     return [ evaluate.load(metric) for metric in metrics], [default_preprocess]
 
 
-def get_sft_tokenizer(config,special_tokens):
+def get_sft_tokenizer(config,special_tokens,add_additional_special_tokens=True):
     """Rewritten from:
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L208"""
     tokenizer_name = config.model_name
@@ -109,12 +145,16 @@ def get_sft_tokenizer(config,special_tokens):
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name, cache_dir=CACHE_DIR)
     tokenizer.add_special_tokens(special_tokens)
-    additional_special_tokens = (
-        []
-        if "additional_special_tokens" not in tokenizer.special_tokens_map
-        else tokenizer.special_tokens_map["additional_special_tokens"]
-    )
-    additional_special_tokens = list(QA_SPECIAL_TOKENS.values())
-    tokenizer.add_special_tokens({"additional_special_tokens": additional_special_tokens})
+
+    if add_additional_special_tokens:
+        additional_special_tokens = (
+            []
+            if "additional_special_tokens" not in tokenizer.special_tokens_map
+            else tokenizer.special_tokens_map["additional_special_tokens"]
+        )
+        additional_special_tokens = list(QA_SPECIAL_TOKENS.values())
+        tokenizer.add_special_tokens({"additional_special_tokens": additional_special_tokens})
 
     return tokenizer,special_tokens["eos_token"]
+
+

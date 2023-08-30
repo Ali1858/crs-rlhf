@@ -4,7 +4,8 @@ https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom
 import re
 import random
 
-from torch.utils.data import Dataset, random_split
+import numpy as np
+from torch.utils.data import Dataset, Subset, random_split
 from torch import Generator
 from datasets import load_dataset
 
@@ -286,7 +287,7 @@ class QADataset(Dataset):
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
 """
-def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,**kwargs):
+def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,max_val_set=None,**kwargs):
     generator = Generator()
     generator.manual_seed(manual_seed)
     threads_per_tree = load_oasst(mode="sft",lang=lang)
@@ -304,9 +305,14 @@ def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,**kwargs):
         return QADataset([process_thread(thread) for tree_threads in ds for thread in tree_threads],eos_token=eos_token)
 
     train = flatten(splits[0])
-    val = flatten(splits[1])
-    print(f"OASST HF dataset: {len(train)=}, {len(val)=}")
-    return train,val
+    eval = flatten(splits[1])
+
+    if max_val_set and len(eval) > max_val_set:
+        subset_indices = np.random.choice(len(eval), size=max_val_set, replace=False)
+        eval = Subset(eval, subset_indices)
+
+    print(f"OASST HF dataset: {len(train)=}, {len(eval)=}")
+    return train,eval
 
     
 

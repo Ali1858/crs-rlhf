@@ -37,14 +37,19 @@ default:
   dataset:
     vicuna:
       val_split: 0.2
+      max_val_set: 200
     dolly:
       val_split: 0.2
+      max_val_set: 200
     alpaca:
       val_split: 0.2
+      max_val_set: 200
     math_instruction:
       val_split: 0.2
+      max_val_set: 200
     oasst_export:
       val_split: 0.2
+      max_val_set: 200
       lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
   collator:
     max_length: 2048
@@ -53,4 +58,4 @@ default:
     samples_mixing: true
     use_system_prefix: false
     system_prefix: null
-  debug: false
+  debug: true

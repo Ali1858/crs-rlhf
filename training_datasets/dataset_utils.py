@@ -1,12 +1,9 @@
-from functools import partial
-
 import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.utils.data import ConcatDataset, Subset, Dataset
-
 from oasst_data import ExportMessageNode, read_dataset_message_trees, visit_threads_depth_first
 
-from constants import RANDOM_SEED, CACHE_DIR
+from constants import RANDOM_SEED, CACHE_DIR, QA_SPECIAL_TOKENS
 
 
 # mostly taken from
@@ -200,7 +197,9 @@ def load_sft_dataset(conf,eos_token):
         if type(ds) == tuple:
             train_ds, val_ds = ds
         else:
-            train_ds,val_ds = train_val_dataset(ds,name=ds_name,val_split=dataset_kwargs["val_split"])
+            train_ds,val_ds = train_val_dataset(ds,name=ds_name,
+                                                val_split=dataset_kwargs["val_split"],
+                                                max_val_set=dataset_kwargs["max_val_set"])
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds
     train = ConcatDataset(train_datasets)
@@ -232,3 +231,17 @@ def load_rm_dataset(conf):
         print(f'Size of {ds_name} validation data: {len(val_ds)}')
     train = ConcatDataset(train_datasets)
     return train,evals
+
+
+def get_rm_formatted(
+        eos_token,
+        text,
+        is_replies=False,
+    ):
+        if is_replies is None:
+            return [
+                "{}{}{}".format(QA_SPECIAL_TOKENS["Question" if i % 2 == 0 else "Answer"], text[i], eos_token)
+                for i in range(len(text))
+                ]
+        else:
+            return "{}{}{}".format(QA_SPECIAL_TOKENS["Answer"], text, eos_token)

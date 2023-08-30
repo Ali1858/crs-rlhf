@@ -6,11 +6,12 @@ from collections import defaultdict
 import numpy as np
 
 from torch.utils.data import Dataset, random_split
-
 from datasets import load_dataset
 from torch import Generator
 
 from training_datasets.dataset_utils import load_oasst, ListDataset
+from constants import QA_SPECIAL_TOKENS
+
 
 SEED = 2020
 

@@ -1,12 +1,13 @@
-
 from dataclasses import dataclass
 from typing import Optional, Union
-import numpy as np
 import random
 
 import torch
+import numpy as np
 from torch.nn import functional as F
 from transformers.tokenization_utils_base import PaddingStrategy,TruncationStrategy,PreTrainedTokenizerBase
+
+from training_datasets.dataset_utils import get_rm_formatted
 from constants import QA_SPECIAL_TOKENS
 
 
@@ -216,9 +217,6 @@ class RankingDataCollator:
     min_prefix_length: int = 256
     pad_to_multiple_of: Optional[int] = None
     max_replies: Optional[int] = 5
-    use_system_tag: bool = False
-    system_property_dropout: float = 0.5
-    system_add_length: bool = True
 
     def process_one(self,example):
         assert self.tokenizer.eos_token
@@ -231,14 +229,14 @@ class RankingDataCollator:
             if len(replies) > self.max_replies:
                 replies = replies[: self.max_replies]
 
-        # if messages is None or len(messages) == 1 and messages[0] is None:
-        #     # special handling for non-dialogue datasets like Hellaswag
-        #     prefix = ""
-        #     replies = [r + eos for r in replies]
-        # else:
-        #     # append eos token to each messages
-        #     prefix = "".join(format_pairs(messages, eos_token=eos))
-        #     replies = [format_reply(r, eos_token=eos) for r in replies]
+        if prefix is None or len(prefix) == 1 and prefix[0] is None:
+            # special handling for non-dialogue datasets like Hellaswag
+            prefix = ""
+            replies = [r + eos for r in replies]
+        else:
+            # append eos token to each messages
+            prefix = "".join(get_rm_formatted(prefix, eos_token=eos))
+            replies = [get_rm_formatted(r, eos_token=eos,is_replies=True) for r in replies]
 
         prefix_tokens = self.tokenizer(prefix, padding=False, truncation=False)
         reply_tokens = [self.tokenizer(r, padding=False, truncation=False) for r in replies]
