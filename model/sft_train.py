@@ -151,9 +151,9 @@ class SFTTrainer(Trainer):
 def main(conf,output_dir):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
+
     # needs to happen before model loading in case of stage 3 training
-    quantization = True
-    optimizer =  OptimizerNames.ADAMW_BNB if quantization else OptimizerNames.ADAMW_HF
+    optimizer =  OptimizerNames.ADAMW_BNB if conf.int8_training else OptimizerNames.ADAMW_HF
     
     args = TrainingArguments(
         output_dir=output_dir,
@@ -178,7 +178,7 @@ def main(conf,output_dir):
         save_steps=conf.save_steps,
         eval_accumulation_steps=conf.eval_accumulation_steps,
         resume_from_checkpoint=conf.resume_from_checkpoint,
-        report_to="wandb",
+        report_to=conf.report_to,
     )
 
     tokenizer, eos_token= get_sft_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS)
@@ -210,23 +210,35 @@ def main(conf,output_dir):
         system_prefix=conf.collator["system_prefix"],
         )
     
-    if quantization:
-        import bitsandbytes  # This is noisy, so delay importing until after argument parsing so it doesn't make --help noisy
+
+    # if conf.int8_training:
+    #     import bitsandbytes  # This is noisy, so delay importing until after argument parsing so it doesn't make --help noisy
+    #     for module in model.modules():
+    #         if isinstance(module, torch.nn.Embedding):
+    #             bitsandbytes.optim.GlobalOptimManager.get_instance().register_module_override(
+    #                 module, "weight", {"optim_bits": 32}
+    #             )
+
+    if conf.debug:
         for module in model.modules():
             if isinstance(module, torch.nn.Embedding):
-                bitsandbytes.optim.GlobalOptimManager.get_instance().register_module_override(
-                    module, "weight", {"optim_bits": 32}
-                )
+                for para in module.parameters():
+                    print(para.requires_grad)
+                print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
+            elif isinstance(module, torch.nn.Linear):
+                for para in module.parameters():
+                    print(para.requires_grad)
+                print(f'Linear {module.weight.shape} and {module.weight.dtype}')
         
     import wandb
 
-    wandb_name = conf["model_name"]
+    wandb_name = conf.model_name
     wandb.init(
         project="supervised-finetuning",
         entity=None,
         resume=conf.resume_from_checkpoint,
         name=f"{wandb_name}--finetuned",
-        config=dict(conf),
+        config=conf,
     )
 
     trainer = SFTTrainer(
@@ -264,5 +276,13 @@ if __name__ == "__main__":
 
     output_dir=f"{args.model_name}-lora-finetuned"
 
+    if args.debug:
+        args.train_batch=1
+        args.eval_batch=1
+        args.num_train_epochs=1
+        args.log_steps=100
+        args.eval_steps=100
+        args.save_steps=100
+
     trainer = main(args,output_dir)
-    # train(trainer,output_dir,args)
+    train(trainer,output_dir,args)

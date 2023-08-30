@@ -1,5 +1,4 @@
 default:
-  cache_dir: CACHE_DIR
   model_name: meta-llama/Llama-2-7b-hf
   #openlm-research/open_llama_7b
   train_batch: 1
@@ -13,12 +12,13 @@ default:
   save_steps: 5000
   warmup_steps: 20
   weight_decay: 0.0
-  dtype: fp32
+  dtype: fp16
   gradient_checkpointing: true
   adam_beta1: 0.9
   adam_beta2: 0.95
   adam_epsilon: 1e-15
   resume_from_checkpoint: null
+  report_to: "wandb"
   metrics:
     - accuracy
   int8_training: true
@@ -31,7 +31,8 @@ default:
     inference_mode: false
     task_type: CAUSAL_LM
     modules_to_save:
-      - wte
+      # - wte
+      - embed_tokens
       - lm_head
   dataset:
     vicuna:
@@ -52,3 +53,4 @@ default:
     samples_mixing: true
     use_system_prefix: false
     system_prefix: null
+  debug: false

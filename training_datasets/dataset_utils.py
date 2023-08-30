@@ -190,6 +190,9 @@ def load_sft_dataset(conf,eos_token):
                          }
     train_datasets = []
     evals = {}
+    if conf.debug:
+        key = next(iter(conf.dataset))
+        conf.dataset = {key:conf.dataset[key]}
 
     for ds_name, dataset_kwargs in conf.dataset.items():
         print(f'===loading the {ds_name} dataset===\n')
