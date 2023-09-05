@@ -1,7 +1,7 @@
 """rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_sft.py
-"""
-        
+""" 
+import os
 import argparse
 from functools import partial
 
@@ -16,7 +16,7 @@ from transformers.trainer_utils import seed_worker
 
 from training_datasets.dataset_utils import load_sft_dataset
 from training_datasets.collators import DialogueDataCollator
-from model.training_utils import get_sft_model, get_sft_tokenizer, get_sft_metrics
+from model_training.training_utils import get_model, get_sft_tokenizer, get_sft_metrics
 from constants import TOKENIZER_SEPECIAL_TOKENS
 from utils import read_yaml, parse_additional_args, print_yaml_config
 
@@ -183,7 +183,7 @@ def main(conf,output_dir):
 
     tokenizer, eos_token= get_sft_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS)
     train_ds , eval_ds = load_sft_dataset(conf,eos_token)
-    model = get_sft_model(tokenizer, conf)
+    model = get_model(tokenizer, conf)
     metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
     train_collate_fn = DialogueDataCollator(
@@ -217,8 +217,6 @@ def main(conf,output_dir):
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
             elif isinstance(module, torch.nn.Linear):
-                for para in module.parameters():
-                    print(para.requires_grad)
                 print(f'Linear {module.weight.shape} and {module.weight.dtype}')
         
     import wandb
@@ -247,8 +245,8 @@ def main(conf,output_dir):
 
 def train(trainer,output_dir,conf):
     trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint)
-    trainer.save_model(output_dir)
-    trainer.tokenizer.save_pretrained(output_dir)
+    trainer.model.save_pretrained(os.path.join(output_dir, "final_checkpoint/"))
+    trainer.tokenizer.save_pretrained(os.path.join(output_dir, "final_checkpoint/"))
 
 
 if __name__ == "__main__":
@@ -265,7 +263,7 @@ if __name__ == "__main__":
     parser = parse_additional_args(config)
     args = parser.parse_args(remaining)
 
-    output_dir=f"{args.model_name}-lora-finetuned"
+    output_dir=f"{args.model_name}-lora-sft"
 
     if args.debug:
         args.train_batch=1

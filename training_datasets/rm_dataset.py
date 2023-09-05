@@ -177,7 +177,7 @@ class RMDataset(Dataset):
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
 """
-def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90):
+def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
     generator = Generator()
     generator.manual_seed(manual_seed)
     threads_per_tree = load_oasst(mode="rm",lang=lang)

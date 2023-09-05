@@ -1,6 +1,6 @@
 from config import SFT_TRAINING_CONFIG,TOKENIZER_CONFIG
-from model.training_utils import get_sft_tokenizer
-from model.sft_train import train
+from model_training.training_utils import get_sft_tokenizer
+from model_training.sft_train import train
 
 def sanity_checks_sft():
     trainer,tokenizer = train()

@@ -1,7 +1,4 @@
-from utils import read_yaml, parse_additional_args, print_yaml_config
-import argparse
-from training_datasets.dataset_utils import load_rm_dataset
-
+import os
 import argparse
 from functools import partial
 
@@ -13,10 +10,10 @@ from transformers.utils import is_datasets_available
 from transformers.trainer_utils import seed_worker
 import datasets
 
-from training_datasets.dataset_utils import load_sft_dataset
+from training_datasets.dataset_utils import load_rm_dataset
 from training_datasets.collators import RankingDataCollator
-from model.training_utils import get_sft_model, get_sft_tokenizer, get_sft_metrics
-from model.losses import RMLoss
+from model_training.training_utils import merge_and_save_peft_model, get_model, get_sft_tokenizer
+from model_training.losses import RMLoss
 from constants import TOKENIZER_SEPECIAL_TOKENS
 from utils import read_yaml, parse_additional_args, print_yaml_config
 
@@ -30,11 +27,9 @@ def compute_metrics(eval_pred, preprocess_fns, metrics):
     return out
 
 
-def preprocess_logits_for_metrics(logits, labels):
-    pred_ids = torch.argmax(logits, dim=-1)
-    return pred_ids
-
-
+"""Taken from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_rm.py#L31
+"""
 class RMTrainer(Trainer):
     def __init__(self, model, args, train_collate_fn,**kwargs):
         super().__init__(model=model,args=args,**kwargs)
@@ -129,37 +124,28 @@ def main(conf,output_dir):
         resume_from_checkpoint=conf.resume_from_checkpoint,
         report_to=conf.report_to,
     )
+    adpater_name = conf.base_model_name+conf.sft_adapter_suffix
+    output_dir = os.path.join(conf.base_model_name+conf.sft_adapter_suffix.split('/')[0],"merged/")
+    conf.model_name = output_dir
 
+    merge_and_save_peft_model(conf,adpater_name,output_dir)
     tokenizer, eos_token= get_sft_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS,add_additional_special_tokens=False)
-    train_ds , eval_ds = load_rm_dataset(conf,eos_token)
-    model = get_sft_model(tokenizer, conf)
-    metrics,preprocess_function = get_sft_metrics(conf.metrics)
+    train_ds , eval_ds = load_rm_dataset(conf)
+    model = get_model(tokenizer, conf, need_embedding_resize=False,reward_model=True)
+    # metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
     train_collate_fn = RankingDataCollator(
         tokenizer,
-        max_length=conf.max_length,
+        max_length=conf.collator["max_length"],
         pad_to_multiple_of=16,
         max_replies=conf.max_replies
     )
     eval_collate_fn = RankingDataCollator(
         tokenizer,
-        max_length=conf.max_length,
+        max_length=conf.collator["max_length"],
         pad_to_multiple_of=16,
         max_replies=conf.max_replies
     )
-    
-    if conf.collator.get("val_max_length") is None:
-        conf.collator["val_max_length"] = conf.collator["max_length"]
-    
-    eval_collate_fn = RankingDataCollator(
-        tokenizer,
-        max_length=conf.collator["val_max_length"],
-        random_offset_probability=conf.collator["random_offset_probability"],
-        label_masking=conf.collator["label_masking"],
-        samples_mixing=False,
-        use_system_prefix=conf.collator["use_system_prefix"],
-        system_prefix=conf.collator["system_prefix"],
-        )
 
     if conf.debug:
         for module in model.modules():
@@ -174,16 +160,16 @@ def main(conf,output_dir):
         
     import wandb
 
-    wandb_name = conf.model_name
+    wandb_name = conf.base_model_name
     wandb.init(
-        project="supervised-finetuning",
+        project="reward-model",
         entity=None,
         resume=conf.resume_from_checkpoint,
-        name=f"{wandb_name}--finetuned",
+        name=f"{wandb_name}--rm",
         config=conf,
     )
 
-    trainer = Rank_RMTrainer(
+    trainer = RMTrainer(
     model=model,
     args=args,
     train_collate_fn=train_collate_fn,
@@ -191,15 +177,15 @@ def main(conf,output_dir):
     eval_dataset=eval_ds,
     data_collator=eval_collate_fn,
     tokenizer=tokenizer,
-    compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function),
-    preprocess_logits_for_metrics=preprocess_logits_for_metrics,)
+    # compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function))
+    )
     return trainer
 
 
 def train(trainer,output_dir,conf):
     trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint)
-    trainer.save_model(output_dir)
-    trainer.tokenizer.save_pretrained(output_dir)
+    trainer.model.save_pretrained(os.path.join(output_dir, "final_checkpoint/"))
+    trainer.tokenizer.save_pretrained(os.path.join(output_dir, "final_checkpoint/"))
 
 if __name__ == "__main__":
     config = {}
@@ -215,4 +201,15 @@ if __name__ == "__main__":
     parser = parse_additional_args(config)
     args = parser.parse_args(remaining)
 
-    main(args)
+    output_dir=f"{args.base_model_name}-lora-rm"
+
+    if args.debug:
+        args.train_batch=1
+        args.eval_batch=1
+        args.num_train_epochs=1
+        args.log_steps=100
+        args.eval_steps=100
+        args.save_steps=100
+
+    trainer = main(args,output_dir)
+    train(trainer,output_dir,args)

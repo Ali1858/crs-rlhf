@@ -203,6 +203,12 @@ def load_sft_dataset(conf,eos_token):
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds
     train = ConcatDataset(train_datasets)
+
+
+    if conf.debug:
+        print("Using only 200 rows for debuging")
+        subset_indices = range(200)
+        train = Subset(train, subset_indices)
     return train,evals
 
               
@@ -219,17 +225,29 @@ def load_rm_dataset(conf):
 
     for ds_name, dataset_kwargs in conf.dataset.items():
         print(f'===loading the {ds_name} dataset===\n')
+        max_val_set = dataset_kwargs["max_val_set"]
+
         if len(dataset_kwargs.get("splits",[])) ==2:
             train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][0])
             val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][1])
         else:
             train_ds,val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,**dataset_kwargs)
 
+        if max_val_set and len(val_ds) > max_val_set:
+            subset_indices = np.random.choice(len(val_ds), size=max_val_set, replace=False)
+            val_ds = Subset(val_ds, subset_indices)
+
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds
         print(f'Size of {ds_name} training data: {len(train_ds)}')
         print(f'Size of {ds_name} validation data: {len(val_ds)}')
     train = ConcatDataset(train_datasets)
+
+    if conf.debug:
+        print("Using only 200 rows for debuging")
+        subset_indices = range(200)
+        train = Subset(train, subset_indices)
+
     return train,evals
 
 
