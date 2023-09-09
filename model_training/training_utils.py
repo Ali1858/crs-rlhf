@@ -1,26 +1,12 @@
 import os
 import math
 
-import evaluate
 import torch
 import transformers
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from peft import PeftConfig, PeftModel
 
 from constants import QA_SPECIAL_TOKENS,CACHE_DIR
-
-
-def default_preprocess(eval_pred, ignote_negative_labels=True):
-    """Taken from:
-    https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L246
-    """
-    preds, labels = eval_pred.predictions, eval_pred.label_ids
-
-    if not ignote_negative_labels:
-        return preds, labels
-
-    mask = labels > 0
-    return preds[mask], labels[mask]
 
 
 def get_all_linear_layers(model):
@@ -35,34 +21,9 @@ def get_all_linear_layers(model):
     return list(modules)
 
 
-def prepare_model_for_gradient_checkpointing(model):
-    r"""
-    Prepares the model for gradient checkpointing if necessary
-    Taken from:
-    https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/peft_modeling.py#L33
-    """
-    if not getattr(model, "is_loaded_in_8bit", False):
-        print('checkpointing')
-        if hasattr(model, "enable_input_require_grads"):
-            model.enable_input_require_grads()
-        else:
-
-            def make_inputs_require_grad(module, input, output):
-                output.requires_grad_(True)
-
-            model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
-    return model
-
-
 def emedding_resize(model,tokenizer,pad_vocab_size_to_multiple_of,config):
     n_embs = model.get_input_embeddings().num_embeddings
     
-    if config.debug:
-        print(f'=== model:/n{model}/n===')
-        for name, param in model.named_parameters():
-            if (param.dtype == torch.float16) or (param.dtype == torch.bfloat16):
-                print(name)
-
     if len(tokenizer) != n_embs or pad_vocab_size_to_multiple_of:
         print("tokenizer size",len(tokenizer))
         p = pad_vocab_size_to_multiple_of
@@ -84,6 +45,8 @@ def get_model(tokenizer,config,pad_vocab_size_to_multiple_of=16,need_embedding_r
 
     peft_config = config.peft_config
 
+    print('load {config.model_name} model')
+
     if not reward_model:
         model = transformers.AutoModelForCausalLM.from_pretrained(config.model_name,
                                                                   torch_dtype=dtype,
@@ -95,13 +58,18 @@ def get_model(tokenizer,config,pad_vocab_size_to_multiple_of=16,need_embedding_r
                                                                             num_labels=1,
                                                                             load_in_8bit=config.int8_training,
                                                                             cache_dir=CACHE_DIR)
+        
 
     if need_embedding_resize:
         emedding_resize(model,tokenizer,pad_vocab_size_to_multiple_of,config)
+
+    if config.debug:
+        print(f'=== model:/n{model}/n===')
         
-    
     if peft_config.get("target_modules") == "all":
         peft_config.update({"target_modules": get_all_linear_layers(model)})
+        print(f'===target module for peft {peft_config["target_modules"]}===')
+    peft_config["inference_mode"]=False
     lora_config = LoraConfig(**peft_config)
     
     if config.int8_training:
@@ -112,14 +80,7 @@ def get_model(tokenizer,config,pad_vocab_size_to_multiple_of=16,need_embedding_r
     return model
 
 
-def get_sft_metrics(metrics):
-    """Taken from:
-    https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L301
-    """
-    return [ evaluate.load(metric) for metric in metrics], [default_preprocess]
-
-
-def get_sft_tokenizer(config,special_tokens,add_additional_special_tokens=True):
+def get_tokenizer(config,special_tokens,add_additional_special_tokens=True):
     """Rewritten from:
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L208"""
     tokenizer_name = config.model_name

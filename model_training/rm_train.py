@@ -1,95 +1,16 @@
 import os
 import argparse
-from functools import partial
 
 import torch
-from torch.utils.data import DataLoader
-from transformers import Trainer, TrainingArguments
+from transformers import TrainingArguments
 from transformers.training_args import OptimizerNames
-from transformers.utils import is_datasets_available
-from transformers.trainer_utils import seed_worker
-import datasets
 
 from training_datasets.dataset_utils import load_rm_dataset
 from training_datasets.collators import RankingDataCollator
-from model_training.training_utils import merge_and_save_peft_model, get_model, get_sft_tokenizer
-from model_training.losses import RMLoss
-from constants import TOKENIZER_SEPECIAL_TOKENS
+from model_training.trainers import RMTrainer
+from model_training.training_utils import merge_and_save_peft_model, get_model, get_tokenizer
 from utils import read_yaml, parse_additional_args, print_yaml_config
-
-
-def compute_metrics(eval_pred, preprocess_fns, metrics):
-    out = {}
-    for metric, preprocess_fn in zip(metrics, preprocess_fns):
-        preds, labels = preprocess_fn(eval_pred)
-        out = dict(**out, **metric.compute(predictions=preds, references=labels))
-
-    return out
-
-
-"""Taken from:
-https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_rm.py#L31
-"""
-class RMTrainer(Trainer):
-    def __init__(self, model, args, train_collate_fn,**kwargs):
-        super().__init__(model=model,args=args,**kwargs)
-        self.train_collate_fn = train_collate_fn
-        self.loss_fct = RMLoss(beta=0.001)
-
-    def compute_loss(self, model, inputs, return_logits=False):
-        batch, cu_lens = inputs
-
-        logits = model(
-            input_ids=batch["input_ids"],
-            attention_mask=batch["attention_mask"],
-        ).logits
-
-        loss = self.loss_fct(logits, cu_lens)
-
-        return (loss, logits) if return_logits else loss
-    
-    
-    def prediction_step(
-        self,
-        model,
-        inputs,
-        prediction_loss_only,
-        ignore_keys,
-    ):
-        batch, cu_lens = inputs
-        with torch.no_grad():
-            batch = self._prepare_inputs(batch)
-            loss, logits = self.compute_loss(model, (batch, cu_lens), return_logits=True)
-
-        loss = loss.mean().detach()
-
-        labels = []
-        for i, (s, e) in enumerate(zip(cu_lens[:-1], cu_lens[1:])):
-            labels.extend([i] * (e - s))
-        # make sure labels are same as logits, needed for deepspeed
-        labels = torch.tensor(labels, device=logits.device, requires_grad=False).view(-1, 1)
-        return (loss, logits.T, labels.T)  # transposed to avoid truncation in evaluation_loop
-
-    
-    def get_train_dataloader(self):
-        data_collator = self.train_collate_fn
-        train_dataset = self.train_dataset
-
-        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-            train_dataset = self._remove_unused_columns(train_dataset, description="training")
-        
-        train_sampler = self._get_train_sampler()
-        dataloader = DataLoader(
-            train_dataset,
-            batch_size=self._train_batch_size,
-            sampler=train_sampler,
-            collate_fn=data_collator,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-            worker_init_fn=seed_worker,
-        )
-        return dataloader
+from constants import TOKENIZER_SEPECIAL_TOKENS
 
 
 def main(conf,output_dir):
@@ -129,7 +50,7 @@ def main(conf,output_dir):
     conf.model_name = output_dir
 
     merge_and_save_peft_model(conf,adpater_name,output_dir)
-    tokenizer, eos_token= get_sft_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS,add_additional_special_tokens=False)
+    tokenizer, eos_token= get_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS,add_additional_special_tokens=False)
     train_ds , eval_ds = load_rm_dataset(conf)
     model = get_model(tokenizer, conf, need_embedding_resize=False,reward_model=True)
     # metrics,preprocess_function = get_sft_metrics(conf.metrics)
@@ -153,10 +74,6 @@ def main(conf,output_dir):
                 for para in module.parameters():
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
-            elif isinstance(module, torch.nn.Linear):
-                for para in module.parameters():
-                    print(para.requires_grad)
-                print(f'Linear {module.weight.shape} and {module.weight.dtype}')
         
     import wandb
 

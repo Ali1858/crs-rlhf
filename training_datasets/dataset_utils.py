@@ -204,7 +204,6 @@ def load_sft_dataset(conf,eos_token):
         evals[ds_name] = val_ds
     train = ConcatDataset(train_datasets)
 
-
     if conf.debug:
         print("Using only 200 rows for debuging")
         subset_indices = range(200)
@@ -256,7 +255,7 @@ def get_rm_formatted(
         text,
         is_replies=False,
     ):
-        if is_replies is None:
+        if not is_replies:
             return [
                 "{}{}{}".format(QA_SPECIAL_TOKENS["Question" if i % 2 == 0 else "Answer"], text[i], eos_token)
                 for i in range(len(text))

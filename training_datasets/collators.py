@@ -24,7 +24,7 @@ class DialogueDataCollator:
     padding: Union[bool, str, PaddingStrategy] = True
     random_offset_probability: Optional[float] = 0.5
     label_masking: bool = True
-    mix_length_threshold: Optional[int] = 256
+    min_length_threshold: Optional[int] = 256
     mix_probability: Optional[float] = 0.6
     samples_mixing: Optional[bool] = False
     system_prefix: str = None
@@ -61,9 +61,11 @@ class DialogueDataCollator:
             # message_change_indices = np.cumsum([len(x) for x in messages])
             # for each token an integer indicating the index of the message it belongs to. Just to create the label mask.
             # Label mask is true when predicting a token that is part of the answer, false otherwise.
-            # TEXT:             Question: Hello, how are you? Answer: I am fine. Question: What is your name? Answer: My name is John.
-            # MESSAGE_INDICES:  0         0      0   0   0    1       1 1  1     2         2    2  2    2     3       3  3    3  3
-            # LABEL_MASK:       0         0      0   0   0    1       1 1  1     0         0    0  0    0     1       1  1    1  1
+            # TEXT:             <s> Question: Hello, how are you? Answer: I am fine. Question: What is your name? Answer: My name is John.
+            # MESSAGE_INDICES:  0         0      0     0   0   0      1   1 1  1     2         2    2  2    2     3       3  3    3  3
+            # LABEL_MASK:       0         0      0     0   0   0      1   1 1  1     0         0    0  0    0     1       1  1    1  1
+            # TARGET:           Question: Hello, how are you? Answer: I am fine. Question: What is your name? Answer: My name is John.<s>
+
 
             # If no result in next, we are predicting the last termination token(s)
             # message_indices = list(
@@ -75,17 +77,8 @@ class DialogueDataCollator:
 
             prompter_token_id = self.tokenizer.convert_tokens_to_ids(QA_SPECIAL_TOKENS["Question"])
             assistant_token_id = self.tokenizer.convert_tokens_to_ids(QA_SPECIAL_TOKENS["Answer"])
-            system_token_id = self.tokenizer.convert_tokens_to_ids(QA_SPECIAL_TOKENS["System"])
-            assert prompter_token_id >= 0 and assistant_token_id >= 0 and system_token_id >=0
-
-            # message_indices = []
-            # i = -1
-            # for x in flatten_message.input_ids:
-            #     if x in (system_token_id,prompter_token_id) and i !=0:
-            #         i += 1
-            #     elif x in (assistant_token_id,):
-            #         i += 1
-            #     message_indices.append(i)
+            sep_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.sep_token)
+            assert prompter_token_id >= 0 and assistant_token_id >= 0
             
             message_indices = []
             i = -1
@@ -93,6 +86,9 @@ class DialogueDataCollator:
                 if x in (prompter_token_id, assistant_token_id):
                     i += 1
                 message_indices.append(i)
+
+        if flatten_message.input_ids[0] == sep_id and message_indices[0] == -1:
+            message_indices[0] = 0
 
         input_length = len(flatten_message.input_ids)
         if self.max_length and input_length > self.max_length:
@@ -111,7 +107,7 @@ class DialogueDataCollator:
 
         label_mask[-1] = False  # make sure last token is inactive, has an effect only when truncating
 
-        if len(flatten_message.input_ids) < self.mix_length_threshold and self.samples_mixing:
+        if len(flatten_message.input_ids) < self.min_length_threshold and self.samples_mixing:
             total_short_context_one += len(flatten_message.input_ids)
 
         return {k: v for k, v in flatten_message.items() if k != "offset_mapping"}, label_mask, total_short_context_one
@@ -132,7 +128,7 @@ class DialogueDataCollator:
             _flatten_messages, _label_masks = [], []
             prev_short_msg, prev_short_mask = None, None
             for flatten_msg, label_mask in zip(flatten_messages, label_masks):
-                if len(flatten_msg["input_ids"]) < self.mix_length_threshold and random.random() > self.mix_probability:
+                if len(flatten_msg["input_ids"]) < self.min_length_threshold and random.random() > self.mix_probability:
                     if prev_short_msg is not None:
                         for key in flatten_msg.keys():
                             flatten_msg[key] += prev_short_msg[key]
@@ -235,9 +231,9 @@ class RankingDataCollator:
             replies = [r + eos for r in replies]
         else:
             # append eos token to each messages
-            prefix = "".join(get_rm_formatted(prefix, eos_token=eos))
-            replies = [get_rm_formatted(r, eos_token=eos,is_replies=True) for r in replies]
-
+            prefix = "".join(get_rm_formatted(eos,prefix))
+            replies = [get_rm_formatted(eos,r,is_replies=True) for r in replies]
+            
         prefix_tokens = self.tokenizer(prefix, padding=False, truncation=False)
         reply_tokens = [self.tokenizer(r, padding=False, truncation=False) for r in replies]
 

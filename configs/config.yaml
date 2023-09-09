@@ -1,0 +1,123 @@
+sft:
+  model_name: meta-llama/Llama-2-13b-hf
+  train_batch: 2
+  eval_batch: 2
+  lr: 1e-5
+  num_train_epochs: 3
+  gradient_accumulation_steps: 1
+  eval_accumulation_steps: 1
+  log_steps: 100
+  eval_steps: 100
+  save_steps: 200
+  warmup_steps: 20
+  weight_decay: 0.0
+  dtype: bf16
+  gradient_checkpointing: true
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1e-15
+  resume_from_checkpoint: null
+  report_to: "wandb"
+  int8_training: true
+  peft_config:
+    r: 16
+    lora_alpha: 32
+    target_modules: all
+    lora_dropout: 0.05
+    bias: none
+    inference_mode: false
+    task_type: CAUSAL_LM
+    modules_to_save:
+      # - wte
+      - embed_tokens
+      - lm_head
+  dataset:
+    vicuna:
+      val_split: 0.2
+      max_val_set: 200
+    dolly:
+      val_split: 0.2
+      max_val_set: 200
+    alpaca:
+      val_split: 0.2
+      max_val_set: 200
+    math_instruction:
+      val_split: 0.2
+      max_val_set: 200
+    oasst_export:
+      val_split: 0.2
+      max_val_set: 200
+      lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
+  collator:
+    max_length: 2048
+    random_offset_probability: 0.5
+    label_masking: true
+    samples_mixing: true
+    use_system_prefix: false
+    system_prefix: null
+
+
+rm:
+  base_model_name: meta-llama/Llama-2-13b-hf
+  sft_adapter_suffix: -lora-sft/final_checkpoint
+  #openlm-research/open_llama_7b
+  train_batch: 4
+  eval_batch: 4
+  lr: 1e-5
+  num_train_epochs: 3
+  gradient_accumulation_steps: 1
+  eval_accumulation_steps: 1
+  log_steps: 500
+  eval_steps: 1000
+  save_steps: 5000
+  warmup_steps: 20
+  weight_decay: 0.0
+  dtype: fp16
+  gradient_checkpointing: true
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1e-15
+  resume_from_checkpoint: null
+  report_to: "wandb"
+  metrics:
+    - accuracy
+  int8_training: true
+  max_replies: 4
+  peft_config:
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    bias: none
+    inference_mode: false
+    task_type: SEQ_CLS
+  dataset:
+    anthropic:
+      splits:
+        - train
+        - test
+      max_val_set: 200
+    hellaswag:
+      splits:
+        - train
+        - validation
+      max_val_set: 200
+    shp:
+      splits:
+        - train
+        - validation
+      max_val_set: 200
+    oasst_export:
+      val_split: 0.2
+      lang: en
+      max_val_set: 200
+  collator:
+    max_length: 2048
+    random_offset_probability: 0.5
+    label_masking: true
+    samples_mixing: true
+    use_system_prefix: false
+    system_prefix: null
+
+  
+common:
+  debug: false

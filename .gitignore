@@ -6,3 +6,5 @@ wandb
 meta-llama
 toy/
 *.pkl
+qlora-meta-llama/
+.ipynb_checkpoints/
