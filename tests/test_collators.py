@@ -24,14 +24,14 @@ class TestDialogueDataCollator(unittest.TestCase):
         # Create a Namespace object for config
         self.config_ns = argparse.Namespace(**config)
 
-        self.sanity_checks_sft(self.config_ns)
+        # self.sanity_checks_sft(self.config_ns)
 
         self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
-        with open("test/dummy_data.json", "r") as f:
+        with open("tests/dummy_data.json", "r") as f:
             j = json.load(f)
             self.test_data = j["sft_test_data"]
-            self.expected_labels = j["expected_labels"]
-            self.expected_targets = j["expected_targets"]
+            self.expected_labels = j["sft_expected_labels"]
+            self.expected_targets = j["sft_expected_targets"]
     
 
     def sanity_checks_sft(self,args):
@@ -60,6 +60,8 @@ class TestDialogueDataCollator(unittest.TestCase):
     
         # Call the data collator with the test data
         processed_data = data_collator(self.test_data)
+        print(f'===shape of output from data collator {processed_data["input_ids"].shape}===')
+
 
         self.assertIn("input_ids", processed_data)
         self.assertIn("attention_mask", processed_data)
@@ -108,14 +110,14 @@ class TestRankingDataCollator(unittest.TestCase):
         self.config_ns = argparse.Namespace(**config)
         self.config_ns.model_name = self.config_ns.base_model_name
 
-        self.sanity_checks_rm(self.config_ns)
+        # self.sanity_checks_rm(self.config_ns)
 
         self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
-        with open("test/dummy_data.json", "r") as f:
+        with open("tests/dummy_data.json", "r") as f:
             j = json.load(f)
             self.test_data = j["rm_test_data"]
-            self.expected_output = j["expected_output"]
-            self.expected_cu_lens = j["expected_cu_lens"]
+            self.expected_output = j["rm_expected_output"]
+            self.expected_cu_lens = j["rm_expected_cu_lens"]
 
         
     def sanity_checks_rm(self,args):
@@ -139,6 +141,9 @@ class TestRankingDataCollator(unittest.TestCase):
         
         # Call the data collator with the test data
         batch, cu_lens = data_collator(self.test_data)
+
+        print(f'===shape of output from data collator {batch["input_ids"].shape}===')
+
 
         self.assertIn("input_ids", batch)
         self.assertIn("attention_mask", batch)

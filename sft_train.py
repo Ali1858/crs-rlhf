@@ -31,14 +31,16 @@ def preprocess_logits_for_metrics(logits, labels):
 
 
 def main(conf,output_dir):
-    print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
-    print_yaml_config(conf)
+    if not conf.deepspeed:
+        print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
+        print_yaml_config(conf)
     # needs to happen before model loading in case of stage 3 training
     optimizer =  OptimizerNames.ADAMW_BNB if conf.int8_training else OptimizerNames.ADAMW_HF
     accuracy = evaluate.load("accuracy")
     args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=conf.num_train_epochs,
+        deepspeed=conf.deepspeed_config if conf.deepspeed else None,
         warmup_steps=conf.warmup_steps,
         learning_rate=float(conf.lr),
         optim=optimizer,
@@ -48,6 +50,7 @@ def main(conf,output_dir):
         gradient_accumulation_steps=conf.gradient_accumulation_steps,
         per_device_train_batch_size=conf.train_batch,
         per_device_eval_batch_size=conf.eval_batch,
+        local_rank=conf.local_rank,
         adam_beta1=conf.adam_beta1,
         adam_beta2=conf.adam_beta2,
         adam_epsilon=float(conf.adam_epsilon),
@@ -96,17 +99,18 @@ def main(conf,output_dir):
                 for para in module.parameters():
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
-        
-    import wandb
+    
+    if not conf.debug and not conf.deepspeed:
+        import wandb
 
-    wandb_name = conf.model_name
-    wandb.init(
-        project="supervised-finetuning",
-        entity=None,
-        resume=conf.resume_from_checkpoint,
-        name=f"{wandb_name}--finetuned",
-        config=conf,
-    )
+        wandb_name = conf.model_name
+        wandb.init(
+            project="supervised-finetuning",
+            entity=None,
+            resume=conf.resume_from_checkpoint,
+            name=f"{wandb_name}--finetuned",
+            config=conf,
+        )
 
     trainer = SFTTrainer(
     model=model,
@@ -116,7 +120,7 @@ def main(conf,output_dir):
     eval_dataset=eval_ds,
     data_collator=eval_collate_fn,
     tokenizer=tokenizer,
-    compute_metrics=partial(compute_accuracy, metrics=accuracy),
+    compute_metrics=partial(compute_accuracy, accuracy),
     preprocess_logits_for_metrics=preprocess_logits_for_metrics,)
     return trainer
 
@@ -131,6 +135,8 @@ if __name__ == "__main__":
     config = {}
     parser = argparse.ArgumentParser(description="Parse configuration")
     parser.add_argument("--overrides", nargs='+', help="Override configurations (key=value)", default=[])
+    parser.add_argument("--deepspeed", action="store_true")
+    parser.add_argument("--local_rank", type=int, default=-1)
     args, remaining = parser.parse_known_args()
 
     overrides = dict(override.split('=') for override in args.overrides)
@@ -138,6 +144,8 @@ if __name__ == "__main__":
     config.update(conf["sft"])
     config.update(conf["common"])
     config.update(overrides)
+    config["local_rank"] = args.local_rank
+    config["deepspeed"] = args.deepspeed
 
     parser = parse_additional_args(config)
     args = parser.parse_args(remaining)
@@ -145,6 +153,7 @@ if __name__ == "__main__":
     output_dir=f"{args.model_name}-lora-sft"
 
     if args.debug:
+        args.report_to="none"
         args.train_batch=1
         args.eval_batch=1
         args.num_train_epochs=1

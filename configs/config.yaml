@@ -1,11 +1,12 @@
 sft:
-  model_name: meta-llama/Llama-2-13b-hf
-  train_batch: 2
-  eval_batch: 2
+  model_name: meta-llama/Llama-2-7b-hf
+  deepspeed_config: configs/deepseed_sft.json
+  train_batch: 1
+  eval_batch: 1
   lr: 1e-5
   num_train_epochs: 3
-  gradient_accumulation_steps: 1
-  eval_accumulation_steps: 1
+  gradient_accumulation_steps: 4
+  eval_accumulation_steps: 4
   log_steps: 100
   eval_steps: 100
   save_steps: 200
@@ -28,7 +29,6 @@ sft:
     inference_mode: false
     task_type: CAUSAL_LM
     modules_to_save:
-      # - wte
       - embed_tokens
       - lm_head
   dataset:
@@ -56,16 +56,15 @@ sft:
     use_system_prefix: false
     system_prefix: null
 
-
 rm:
   base_model_name: meta-llama/Llama-2-13b-hf
   sft_adapter_suffix: -lora-sft/final_checkpoint
   #openlm-research/open_llama_7b
-  train_batch: 4
-  eval_batch: 4
+  train_batch: 1
+  eval_batch: 1
   lr: 1e-5
   num_train_epochs: 3
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   eval_accumulation_steps: 1
   log_steps: 500
   eval_steps: 1000

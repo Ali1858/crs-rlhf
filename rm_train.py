@@ -111,8 +111,9 @@ if __name__ == "__main__":
     args, remaining = parser.parse_known_args()
 
     overrides = dict(override.split('=') for override in args.overrides)
-    conf = read_yaml('./configs/rm_config.yaml')
-    config.update(conf["default"])
+    conf = read_yaml('./configs/config.yaml')
+    config.update(conf["rm"])
+    config.update(conf["common"])
     config.update(overrides)
 
     parser = parse_additional_args(config)
