@@ -13,16 +13,31 @@ from utils import read_yaml, parse_additional_args, print_yaml_config
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
 
-def main(conf,output_dir):
+def main(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
 
     # needs to happen before model loading in case of stage 3 training
     optimizer =  OptimizerNames.ADAMW_BNB if conf.int8_training else OptimizerNames.ADAMW_HF
-    
+    device_map = {"":1}
+
+    device_map = {'model.embed_tokens': 0, 'model.layers.0': 1, 'model.layers.1': 1,
+            'model.layers.2': 1, 'model.layers.3': 1, 'model.layers.4': 1, 
+            'model.layers.5': 1, 'model.layers.6': 1, 'model.layers.7': 1, 
+            'model.layers.8': 1, 'model.layers.9': 1, 'model.layers.10': 1,
+            'model.layers.11': 1, 'model.layers.12': 1, 'model.layers.13': 1,
+            'model.layers.14': 1, 'model.layers.15': 1, 'model.layers.16': 1,
+            'model.layers.17': 1, 'model.layers.18': 1, 'model.layers.19': 1,
+            'model.layers.20': 1, 'model.layers.21': 1, 'model.layers.22': 1,
+            'model.layers.23': 1, 'model.layers.24': 1, 'model.layers.25': 1,
+            'model.layers.26': 1, 'model.layers.27': 1, 'model.layers.28': 1,
+            'model.layers.29': 1, 'model.layers.30': 1, 'model.layers.31': 1,
+            'model.norm': 1, 'score': 1}
+
     args = TrainingArguments(
-        output_dir=output_dir,
+        output_dir=conf.output_dir,
         num_train_epochs=conf.num_train_epochs,
+        lr_scheduler_type=conf.lr_scheduler_type,
         warmup_steps=conf.warmup_steps,
         learning_rate=float(conf.lr),
         optim=optimizer,
@@ -45,14 +60,11 @@ def main(conf,output_dir):
         resume_from_checkpoint=conf.resume_from_checkpoint,
         report_to=conf.report_to,
     )
-    adpater_name = conf.base_model_name+conf.sft_adapter_suffix
-    output_dir = os.path.join(conf.base_model_name+conf.sft_adapter_suffix.split('/')[0],"merged/")
-    conf.model_name = output_dir
-
-    merge_and_save_peft_model(conf,adpater_name,output_dir)
+    conf.model_name = conf.merged_adapter_path
+    merge_and_save_peft_model(conf)
     tokenizer, eos_token= get_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS,add_additional_special_tokens=False)
     train_ds , eval_ds = load_rm_dataset(conf)
-    model = get_model(tokenizer, conf, need_embedding_resize=False,reward_model=True)
+    model = get_model(tokenizer, device=device_map,config=conf, need_embedding_resize=False,reward_model=True)
     # metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
     train_collate_fn = RankingDataCollator(
@@ -77,12 +89,11 @@ def main(conf,output_dir):
         
     import wandb
 
-    wandb_name = conf.base_model_name
     wandb.init(
         project="reward-model",
         entity=None,
         resume=conf.resume_from_checkpoint,
-        name=f"{wandb_name}--rm",
+        name=conf.name,
         config=conf,
     )
 
@@ -99,35 +110,38 @@ def main(conf,output_dir):
     return trainer
 
 
-def train(trainer,output_dir,conf):
+def train(trainer,conf):
     trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint)
-    trainer.model.save_pretrained(os.path.join(output_dir, "final_checkpoint/"))
-    trainer.tokenizer.save_pretrained(os.path.join(output_dir, "final_checkpoint/"))
+    trainer.model.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
+    trainer.tokenizer.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
 
 if __name__ == "__main__":
     config = {}
     parser = argparse.ArgumentParser(description="Parse configuration")
-    parser.add_argument("--overrides", nargs='+', help="Override configurations (key=value)", default=[])
+    parser.add_argument("--config_subset",type=str, help="Subset of the configs to use")
     args, remaining = parser.parse_known_args()
 
-    overrides = dict(override.split('=') for override in args.overrides)
     conf = read_yaml('./configs/config.yaml')
-    config.update(conf["rm"])
+    config.update(conf[args.config_subset])
     config.update(conf["common"])
-    config.update(overrides)
 
     parser = parse_additional_args(config)
     args = parser.parse_args(remaining)
 
-    output_dir=f"{args.base_model_name}-lora-rm"
+    args.adpater_path = os.path.join(args.output_dir,config["adpater_name"],'final_checkpoint')
+    args.merged_adapter_path = os.path.join(args.output_dir,config["adpater_name"],'merged')
+    args.output_dir = os.path.join(args.output_dir,args.name)
+
 
     if args.debug:
+        args.report_to="none"
         args.train_batch=1
         args.eval_batch=1
+        args.gradient_accumulation_steps = 1
         args.num_train_epochs=1
         args.log_steps=100
         args.eval_steps=100
         args.save_steps=100
 
-    trainer = main(args,output_dir)
-    train(trainer,output_dir,args)
+    trainer = main(args)
+    train(trainer,args)

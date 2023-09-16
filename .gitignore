@@ -9,3 +9,4 @@ toy/
 qlora-meta-llama/
 .ipynb_checkpoints/
 .vscode
+output

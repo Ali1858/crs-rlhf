@@ -32,7 +32,7 @@ def emedding_resize(model,tokenizer,pad_vocab_size_to_multiple_of,config):
         model.resize_token_embeddings(target_size)
 
 
-def get_model(tokenizer,config,pad_vocab_size_to_multiple_of=16,need_embedding_resize=True,reward_model=False):
+def get_model(tokenizer,device,config,pad_vocab_size_to_multiple_of=16,need_embedding_resize=True,reward_model=False):
     """Rewritten from:
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L282
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/peft_modeling.py#L49
@@ -51,14 +51,15 @@ def get_model(tokenizer,config,pad_vocab_size_to_multiple_of=16,need_embedding_r
         model = transformers.AutoModelForCausalLM.from_pretrained(config.model_name,
                                                                   torch_dtype=dtype,
                                                                   load_in_8bit=config.int8_training,
-                                                                  cache_dir=CACHE_DIR)
+                                                                  cache_dir=CACHE_DIR,
+                                                                  device_map=device)
     else:
         model = transformers.AutoModelForSequenceClassification.from_pretrained(config.model_name,
                                                                             torch_dtype=dtype,
                                                                             num_labels=1,
                                                                             load_in_8bit=config.int8_training,
-                                                                            cache_dir=CACHE_DIR)
-        
+                                                                            cache_dir=CACHE_DIR,
+                                                                            device_map=device)        
 
     if need_embedding_resize:
         emedding_resize(model,tokenizer,pad_vocab_size_to_multiple_of,config)
@@ -69,7 +70,11 @@ def get_model(tokenizer,config,pad_vocab_size_to_multiple_of=16,need_embedding_r
     if peft_config.get("target_modules") == "all":
         peft_config.update({"target_modules": get_all_linear_layers(model)})
         print(f'===target module for peft {peft_config["target_modules"]}===')
-    peft_config["inference_mode"]=False
+    elif peft_config.get("target_modules") is None:
+        peft_config.pop("target_modules")
+        print(peft_config)
+        print(f'=== No  target module. Lora will use default setting. ===')
+
     lora_config = LoraConfig(**peft_config)
     
     if config.int8_training:
@@ -84,7 +89,7 @@ def get_tokenizer(config,special_tokens,add_additional_special_tokens=True):
     """Rewritten from:
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L208"""
     tokenizer_name = config.model_name
-    assert "llama" in tokenizer_name, "Currently only llama model supported"
+    assert "llama" in tokenizer_name.lower(), "Currently only llama model supported"
 
     special_tokens = special_tokens["llama"]
 
@@ -103,10 +108,10 @@ def get_tokenizer(config,special_tokens,add_additional_special_tokens=True):
     return tokenizer,special_tokens["eos_token"]
 
 
-def merge_and_save_peft_model(conf,adpater_name,output_dir):
-    if not os.path.exists(output_dir):
-        
-        peft_config = PeftConfig.from_pretrained(adpater_name)
+def merge_and_save_peft_model(conf):
+    if not os.path.exists(conf.merged_adapter_path):
+        print(f"{'==='*10} Initiating the model merging process")
+        peft_config = PeftConfig.from_pretrained(conf.adpater_path)
 
         dtype = torch.float32
         if conf.dtype in ["fp16", "float16"]:
@@ -122,18 +127,25 @@ def merge_and_save_peft_model(conf,adpater_name,output_dir):
                 conf.base_model_name, return_dict=True, torch_dtype=dtype
                 )
 
-        tokenizer = transformers.AutoTokenizer.from_pretrained(adpater_name)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(conf.adpater_path)
         emedding_resize(base_model,tokenizer,16,conf)
 
+        if conf.debug:
+            print(base_model)
+
         # Load the Lora model
-        model = PeftModel.from_pretrained(base_model, adpater_name)
+        model = PeftModel.from_pretrained(base_model, conf.adpater_path)
+
+        if conf.debug:
+            print(base_model)
+
         model.eval()
         model = model.merge_and_unload()
-        model.save_pretrained(output_dir)
-        tokenizer.save_pretrained(output_dir)
-        print(f"The peft model and tokenizer are saved at location {output_dir}")
+        model.save_pretrained(conf.merged_adapter_path)
+        tokenizer.save_pretrained(conf.merged_adapter_path)
+        print(f"{'==='*10} The peft model and tokenizer are saved at location {conf.merged_adapter_path}")
     else:
-        print(f"The peft model is already saved at location {output_dir}")
+        print(f"{'==='*10} The peft model is already saved at location {conf.merged_adapter_path}")
 
 
 

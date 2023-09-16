@@ -1,9 +1,11 @@
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets"""
 
+import random
 from typing import List
 from collections import defaultdict
 import numpy as np
+import re
 
 from torch.utils.data import Dataset, random_split
 from datasets import load_dataset
@@ -14,6 +16,23 @@ from constants import QA_SPECIAL_TOKENS
 
 
 SEED = 2020
+
+SUMMARIZATION_SPECIAL_TOKENS = {"Text": "", "Summary": ["TL;DR:", "Summarize this", "Give me the summary"]}
+
+SUMMARY_SPECIAL_PROMPT = {
+    "multi_news": ["Summarize in bullet points", "Generate summary in list of points"],
+    "xsum": ["Give me summary in one sentence", "Short TLDR", "Give me a concise summary"],
+    "samsum": ["TLDR;", "Summarize this dialogue", "Summarize dialogue"],
+}
+
+
+
+# @agoryuno contributed this
+re_reference_remove = re.compile(r"\[\d+(?:,\s*\d+)*?\]")
+re_single_reference_remove = re.compile(r"\[\s?\d+\s?\]")
+
+# check if the whole string is just a combination of (multiple) whitespaces and newlines
+re_whitespace_newline_match = re.compile(r"^[\s\n]*$")
 
 
 "Taken from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/rank_datasets.py#L182"
@@ -199,3 +218,114 @@ def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
     val = flatten(splits[1])
     print(f"OASST HF dataset: {len(train)=}, {len(val)=}")
     return train,val
+
+"""Taken from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/qa_datasets.py#L188
+"""
+class WebGPT(Dataset):
+    name = "webgpt"
+
+    def __init__(self, cache_dir, max_answers: int = 5) -> None:
+        super().__init__()
+        self.rows = []
+
+        dataset = load_dataset("openai/webgpt_comparisons")
+        question_answer_dict = defaultdict(dict)
+
+        for row in dataset["train"]:
+            question = row["question"]["full_text"]
+            answer_0 = re_reference_remove.sub("", row["answer_0"])
+            answer_1 = re_reference_remove.sub("", row["answer_1"])
+            if answer_0 != "" and answer_1 != "" and answer_0 != answer_1:
+                question_answer_dict[question][answer_0] = row["score_0"]
+                question_answer_dict[question][answer_1] = row["score_1"]
+
+        for question, answers in question_answer_dict.items():
+            # Sort answer dict with the highest score first (hence the prefactor -1).
+            # Then take only the first `max_answers` elements (usually there are just
+            # 2, but there are examples where we have more)
+            answers_sorted = [x[0] for x in sorted(answers.items(), key=lambda x: -1 * x[1])]
+            self.rows.append((question,answers_sorted[:max_answers]))
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, index):
+        return self.rows[index]
+
+
+def get_webgpt_rm(val_split,cache_dir,manual_seed=90,**kwargs):
+    generator = Generator()
+    generator.manual_seed(manual_seed)
+    webgpt = WebGPT(cache_dir=cache_dir)
+    splits = random_split(webgpt, lengths=[1.0 - val_split, val_split], generator=generator)
+
+    train = splits[0]
+    val = splits[1]
+    print(f"WebGPT: {len(train)=}, {len(val)=}")
+    return train,val
+    
+
+# class HFSummaryPairs(Dataset):
+#     """
+#     Simplified version of the HFSummary class which uses the original examples
+#     of the OpenAI dataset.
+#     https://huggingface.co/datasets/openai/summarize_from_feedback
+#     """
+
+#     def __init__(self, split="train", mode="sft", conf_threshold=-1) -> None:
+#         super().__init__()
+#         assert split in ("train", "valid1", "valid2", "test")
+#         assert mode in ("sft", "rm", "rl")
+#         self.mode = mode
+
+#         self.posts = []
+#         self.summary_pairs = []
+
+#         major_split = split if "train" == split else "validation"
+#         dataset = load_dataset("openai/summarize_from_feedback", "comparisons")[major_split]
+#         for data in dataset:
+#             if (
+#                 "extra" in data
+#                 and "confidence" in data["extra"]
+#                 and data["extra"]["confidence"] is not None
+#                 and conf_threshold > data["extra"]["confidence"]
+#             ):
+#                 print("skipping {}".format(data["info"]["id"]))
+#                 continue
+
+#             if split != "train" and split != data["split"]:
+#                 continue
+
+#             if "article" in data["info"] and data["info"]["article"] is not None:
+#                 context = data["info"]["article"]
+#             elif "post" in data["info"]:
+#                 context = data["info"]["post"]
+
+#             self.posts.append(context)
+#             pos, neg = (0, 1) if data["choice"] == 0 else (1, 0)
+#             self.summary_pairs.append((data["summaries"][pos]["text"].strip(), data["summaries"][neg]["text"].strip()))
+
+#     def __len__(self) -> int:
+#         return len(self.posts)
+
+#     def __getitem__(self, index: int) -> tuple | list:
+#         if index < 0 or index >= len(self.posts):
+#             raise IndexError()
+
+#         context = self.posts[index]
+#         # return pairs of comparison
+#         good_summary, bad_summary = self.summary_pairs[index]
+#         prompt = random.choice(SUMMARIZATION_PROMPTS)
+
+#         # pair very big
+#         # we are going to do some sampling
+#         # not optimal but good for now
+#         if self.mode == "sft":
+#             return [prompt.format(context), good_summary]
+#         elif self.mode == "rl":
+#             return (prompt.format(context),)
+#         elif self.mode == "rm":
+#             return [prompt.format(context)], [good_summary, bad_summary]
+
+#         raise RuntimeError(f"Unsupported mode '{self.mode}'")

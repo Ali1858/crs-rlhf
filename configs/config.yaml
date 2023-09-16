@@ -1,25 +1,31 @@
-sft:
-  model_name: meta-llama/Llama-2-7b-hf
-  deepspeed_config: configs/deepseed_sft.json
-  train_batch: 1
-  eval_batch: 1
+common:
+  debug: false
+  debug_set: 100
+  dtype: bf16
+  report_to: "wandb"
+  int8_training: true
+  output_dir: output
+  model_name: &sft_model meta-llama/Llama-2-7b-hf
+  resume_from_checkpoint: 
+ 
+pre_sft:
+  name: &pre_sft_name LLama-2-7b_pre_sft
+  train_batch: 4
+  eval_batch: 4
   lr: 1e-5
   num_train_epochs: 3
-  gradient_accumulation_steps: 4
-  eval_accumulation_steps: 4
+  gradient_accumulation_steps: 16
+  eval_accumulation_steps: 
   log_steps: 100
   eval_steps: 100
   save_steps: 200
-  warmup_steps: 20
-  weight_decay: 0.0
-  dtype: bf16
+  lr_scheduler_type: cosine
+  warmup_steps: 100
+  weight_decay: 0.000001
   gradient_checkpointing: true
   adam_beta1: 0.9
   adam_beta2: 0.95
-  adam_epsilon: 1e-15
-  resume_from_checkpoint: null
-  report_to: "wandb"
-  int8_training: true
+  adam_epsilon: 1e-12
   peft_config:
     r: 16
     lora_alpha: 32
@@ -33,21 +39,64 @@ sft:
       - lm_head
   dataset:
     vicuna:
-      val_split: 0.2
-      max_val_set: 200
+      val_split: 0.05
+      max_val_set: 800
     dolly:
-      val_split: 0.2
-      max_val_set: 200
+      val_split: 0.05
+      max_val_set: 300
     alpaca:
-      val_split: 0.2
+      val_split: 0.05
       max_val_set: 200
     math_instruction:
-      val_split: 0.2
+      val_split: 0.05
       max_val_set: 200
     oasst_export:
-      val_split: 0.2
-      max_val_set: 200
-      lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
+        val_split: 0.2
+        max_val_set: 200
+        lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
+  collator:
+    max_length: 2048
+    random_offset_probability: 0.5
+    label_masking: true
+    samples_mixing: true
+    use_system_prefix: false
+    system_prefix: null
+
+sft:
+  name: &sft_adapter LLama-2-7b_oasst_sft
+  train_batch: 2
+  eval_batch: 2
+  lr: 1e-5
+  num_train_epochs: 3
+  gradient_accumulation_steps: 4
+  eval_accumulation_steps: 
+  log_steps: 100
+  eval_steps: 100
+  save_steps: 200
+  lr_scheduler_type: cosine
+  warmup_steps: 100
+  weight_decay: 0.000001
+  gradient_checkpointing: true
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1e-12
+  checkpoint_name: *pre_sft_name 
+  peft_config:
+    r: 16
+    lora_alpha: 32
+    target_modules: 
+    lora_dropout: 0.05
+    bias: none
+    inference_mode: false
+    task_type: CAUSAL_LM
+    modules_to_save:
+      - embed_tokens
+      - lm_head
+  dataset:
+    oasst_export:
+        val_split: 0.2
+        max_val_set: 200
+        lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
   collator:
     max_length: 2048
     random_offset_probability: 0.5
@@ -57,9 +106,9 @@ sft:
     system_prefix: null
 
 rm:
-  base_model_name: meta-llama/Llama-2-13b-hf
-  sft_adapter_suffix: -lora-sft/final_checkpoint
-  #openlm-research/open_llama_7b
+  name: LLama-2-7b_ranking_reward
+  base_model_name: *sft_model
+  adpater_name: *sft_adapter 
   train_batch: 1
   eval_batch: 1
   lr: 1e-5
@@ -70,17 +119,14 @@ rm:
   eval_steps: 1000
   save_steps: 5000
   warmup_steps: 20
+  lr_scheduler_type: cosine
   weight_decay: 0.0
-  dtype: fp16
   gradient_checkpointing: true
   adam_beta1: 0.9
   adam_beta2: 0.95
   adam_epsilon: 1e-15
-  resume_from_checkpoint: null
-  report_to: "wandb"
   metrics:
     - accuracy
-  int8_training: true
   max_replies: 4
   peft_config:
     r: 16
@@ -88,27 +134,35 @@ rm:
     lora_dropout: 0.05
     bias: none
     inference_mode: false
+    target_modules:
     task_type: SEQ_CLS
   dataset:
+    oasst_export:
+      val_split: 0.05
+      lang: "en,es,de,fr"
     anthropic:
       splits:
         - train
         - test
-      max_val_set: 200
-    hellaswag:
-      splits:
-        - train
-        - validation
-      max_val_set: 200
+      max_val_set: 1000
     shp:
       splits:
         - train
         - validation
-      max_val_set: 200
-    oasst_export:
-      val_split: 0.2
-      lang: en
-      max_val_set: 200
+      max_val_set: 1000
+    hellaswag:
+      splits:
+        - train
+        - validation
+      max_val_set: 1000
+    webgpt:
+         val_split: 0.05
+         max_val_set: 1000
+    # hf_summary_pairs:
+    #      splits:
+    #       -train
+    #       - valid1
+    #      max_val_set: 250
   collator:
     max_length: 2048
     random_offset_probability: 0.5
@@ -116,7 +170,3 @@ rm:
     samples_mixing: true
     use_system_prefix: false
     system_prefix: null
-
-  
-common:
-  debug: false

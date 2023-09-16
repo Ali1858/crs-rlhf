@@ -205,26 +205,29 @@ def load_sft_dataset(conf,eos_token):
     train = ConcatDataset(train_datasets)
 
     if conf.debug:
-        print("Using only 200 rows for debuging")
-        subset_indices = range(200)
+        print("Using only n numbers rows for debuging")
+        subset_indices = range(conf.debug_set)
         train = Subset(train, subset_indices)
+        for k,v in evals.items():
+            evals[k] = Subset(v, subset_indices)
     return train,evals
 
-              
+          
 def load_rm_dataset(conf):
-    from training_datasets.rm_dataset import AnthropicRLHF, HellaSwagDataset, SHPDataset, get_oasst_rm
+    from training_datasets.rm_dataset import AnthropicRLHF, HellaSwagDataset, SHPDataset, get_oasst_rm, get_webgpt_rm
     dataset_func_mapping  = {
                         "anthropic": AnthropicRLHF,
                         "hellaswag": HellaSwagDataset,
                         "shp":SHPDataset,
-                        "oasst_export":get_oasst_rm
+                        "oasst_export":get_oasst_rm,
+                        "webgpt": get_webgpt_rm
                         }
     train_datasets = []
     evals = {}
 
     for ds_name, dataset_kwargs in conf.dataset.items():
         print(f'===loading the {ds_name} dataset===\n')
-        max_val_set = dataset_kwargs["max_val_set"]
+        max_val_set = dataset_kwargs.get("max_val_set",None)
 
         if len(dataset_kwargs.get("splits",[])) ==2:
             train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][0])
@@ -243,9 +246,11 @@ def load_rm_dataset(conf):
     train = ConcatDataset(train_datasets)
 
     if conf.debug:
-        print("Using only 200 rows for debuging")
-        subset_indices = range(200)
+        print("Using only n numbers rows for debuging")
+        subset_indices = range(conf.debug_set)
         train = Subset(train, subset_indices)
+        for k,v in evals.items():
+            evals[k] = Subset(v, subset_indices)
 
     return train,evals
 
