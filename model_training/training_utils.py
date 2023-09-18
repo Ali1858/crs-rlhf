@@ -37,6 +37,9 @@ def get_model(tokenizer,device,config,pad_vocab_size_to_multiple_of=16,need_embe
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L282
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/peft_modeling.py#L49
     """
+
+    assert "llama" in config.model_name.lower(), "Currently only llama model supported"
+
     dtype = torch.float32
     if config.dtype in ["fp16", "float16"]:
         dtype = torch.float16
@@ -60,7 +63,6 @@ def get_model(tokenizer,device,config,pad_vocab_size_to_multiple_of=16,need_embe
                                                                             load_in_8bit=config.int8_training,
                                                                             cache_dir=CACHE_DIR,
                                                                             device_map=device)        
-
     if need_embedding_resize:
         emedding_resize(model,tokenizer,pad_vocab_size_to_multiple_of,config)
 

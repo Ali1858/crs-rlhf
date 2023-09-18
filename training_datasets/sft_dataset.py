@@ -3,6 +3,8 @@ https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom
 
 import re
 import random
+from collections import defaultdict
+
 
 import numpy as np
 from torch.utils.data import Dataset, Subset, random_split
@@ -284,6 +286,45 @@ class QADataset(Dataset):
                          )
 
 
+"""Taken from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/qa_datasets.py#L188
+"""
+class WebGPT(Dataset):
+    name = "webgpt"
+
+    def __init__(self, cache_dir,eos_token) -> None:
+        super().__init__()
+        self.rows = []
+
+        dataset = load_dataset("openai/webgpt_comparisons",cache_dir=cache_dir)
+        question_answer_dict = defaultdict(dict)
+
+        for row in dataset["train"]:
+            question = row["question"]["full_text"]
+            answer_0 = re_reference_remove.sub("", row["answer_0"])
+            answer_1 = re_reference_remove.sub("", row["answer_1"])
+            if answer_0 != "" and answer_1 != "" and answer_0 != answer_1:
+                question_answer_dict[question][answer_0] = row["score_0"]
+                question_answer_dict[question][answer_1] = row["score_1"]
+
+        for question, answers in question_answer_dict.items():
+            # Sort answer dict with the highest score first (hence the prefactor -1).
+            # Then take only the first `max_answers` elements (usually there are just
+            # 2, but there are examples where we have more)
+            answers = [x[0] for x in sorted(answers.items(), key=lambda x: -1 * x[1])]
+            ds_entry = get_qa_formatted(eos_token,
+                         questions=[question],
+                         answers=[answers[0]]
+                         )
+
+            self.rows.append(ds_entry)
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, index):
+        return self.rows[index]
+
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
 """
@@ -314,5 +355,19 @@ def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,max_val_set=None,**kwa
     print(f"OASST HF dataset: {len(train)=}, {len(eval)=}")
     return train,eval
 
-    
 
+def get_webgpt_sft(val_split,eos_token,cache_dir,manual_seed=90,max_val_set=None,**kwargs):
+    generator = Generator()
+    generator.manual_seed(manual_seed)
+    webgpt = WebGPT(cache_dir=cache_dir,eos_token=eos_token)
+    splits = random_split(webgpt, lengths=[1.0 - val_split, val_split], generator=generator)
+
+    train = splits[0]
+    eval = splits[1]
+
+    if max_val_set and len(eval) > max_val_set:
+        subset_indices = np.random.choice(len(eval), size=max_val_set, replace=False)
+        eval = Subset(eval, subset_indices)
+
+    print(f"WebGPT: {len(train)=}, {len(eval)=}")
+    return train,eval

@@ -105,7 +105,9 @@ def main(conf):
         system_prefix=conf.collator["system_prefix"],
         )
 
+    wandb_suffix = ""
     if conf.debug:
+        wandb_suffix = "_debug"
         for module in model.modules():
             if isinstance(module, torch.nn.Embedding):
                 for para in module.parameters():
@@ -114,9 +116,9 @@ def main(conf):
     
     if not conf.debug:
         import wandb
-
+        wandb_project_name = f"supervised-finetuning{wandb_suffix}"
         wandb.init(
-            project="supervised-finetuning",
+            project=wandb_project_name,
             entity=None,
             resume=conf.resume_from_checkpoint,
             name=conf.name,
@@ -146,12 +148,19 @@ if __name__ == "__main__":
     config = {}
     parser = argparse.ArgumentParser(description="Parse configuration")
     parser.add_argument("--config_subset", type=str, help="Subset of the configs to use")
+    parser.add_argument("--name_suffix", type=str, default="", help="Suffix name while performing multiple experiment. Keep it  simple because by default wandb store configs of each train")
+
     args, remaining = parser.parse_known_args()
 
     config_subset = args.config_subset
     conf = read_yaml('./configs/config.yaml')
-    config.update(conf[config_subset])
     config.update(conf["common"])
+    config.update(conf[config_subset])
+    config["name_suffix"] = args.name_suffix
+
+    for k,v in config.pop("peft_config_additional").items():
+        config["peft_config"][k]=v
+
 
     parser = parse_additional_args(config)
     args = parser.parse_args(remaining)
@@ -160,6 +169,8 @@ if __name__ == "__main__":
     if config_subset == "sft":
         args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,"final_checkpoint") 
 
+    debug_tag = "_dbug" if args.debug else ""
+    args.name = f"{args.name}{debug_tag}{args.name_suffix}"
     args.output_dir = os.path.join(args.output_dir,args.name)
 
 

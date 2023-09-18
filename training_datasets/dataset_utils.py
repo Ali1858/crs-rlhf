@@ -178,12 +178,13 @@ def load_oasst(mode="sft",
 
 
 def load_sft_dataset(conf,eos_token):
-    from training_datasets.sft_dataset import Vicuna, DatabrickDolly15k, AlpacaBaseDataset, MathInstruction, get_oasst_sft
+    from training_datasets.sft_dataset import Vicuna, DatabrickDolly15k, AlpacaBaseDataset, MathInstruction, get_oasst_sft, get_webgpt_sft
     dataset_func_mapping  = {"vicuna": Vicuna,
                          "dolly": DatabrickDolly15k,
                          "alpaca": AlpacaBaseDataset,
                          "math_instruction":MathInstruction,
-                         "oasst_export":get_oasst_sft
+                         "oasst_export":get_oasst_sft,
+                         "webgpt":get_webgpt_sft
                          }
     train_datasets = []
     evals = {}
@@ -210,6 +211,11 @@ def load_sft_dataset(conf,eos_token):
         train = Subset(train, subset_indices)
         for k,v in evals.items():
             evals[k] = Subset(v, subset_indices)
+
+    print(f'{"==="*10} Total training dataset size is {len(train)}...')
+    for k,v in evals.items():
+        print(f'\t{"==="*10} Validation size for {k} dataset size is {len(v)}...')
+
     return train,evals
 
           
@@ -224,6 +230,9 @@ def load_rm_dataset(conf):
                         }
     train_datasets = []
     evals = {}
+    if conf.debug:
+        key = next(iter(conf.dataset))
+        conf.dataset = {key:conf.dataset[key]}
 
     for ds_name, dataset_kwargs in conf.dataset.items():
         print(f'===loading the {ds_name} dataset===\n')
@@ -251,6 +260,10 @@ def load_rm_dataset(conf):
         train = Subset(train, subset_indices)
         for k,v in evals.items():
             evals[k] = Subset(v, subset_indices)
+
+    print(f'{"==="*10} Total training dataset size is {len(train)}...')
+    for k,v in evals.items():
+        print(f'\t{"==="*10} Validation size for {k} dataset size is {len(v)}...')
 
     return train,evals
 

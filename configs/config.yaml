@@ -7,13 +7,19 @@ common:
   output_dir: output
   model_name: &sft_model meta-llama/Llama-2-7b-hf
   resume_from_checkpoint: 
+  peft_config:
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    bias: none
+    inference_mode: false 
  
 pre_sft:
   name: &pre_sft_name LLama-2-7b_pre_sft
   train_batch: 4
   eval_batch: 4
   lr: 1e-5
-  num_train_epochs: 3
+  num_train_epochs: 1
   gradient_accumulation_steps: 16
   eval_accumulation_steps: 
   log_steps: 100
@@ -26,13 +32,8 @@ pre_sft:
   adam_beta1: 0.9
   adam_beta2: 0.95
   adam_epsilon: 1e-12
-  peft_config:
-    r: 16
-    lora_alpha: 32
+  peft_config_additional:
     target_modules: all
-    lora_dropout: 0.05
-    bias: none
-    inference_mode: false
     task_type: CAUSAL_LM
     modules_to_save:
       - embed_tokens
@@ -50,10 +51,9 @@ pre_sft:
     math_instruction:
       val_split: 0.05
       max_val_set: 200
-    oasst_export:
-        val_split: 0.2
-        max_val_set: 200
-        lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
+    webgpt:
+         val_split: 0.05
+         max_val_set: 1000
   collator:
     max_length: 2048
     random_offset_probability: 0.5
@@ -81,13 +81,8 @@ sft:
   adam_beta2: 0.95
   adam_epsilon: 1e-12
   checkpoint_name: *pre_sft_name 
-  peft_config:
-    r: 16
-    lora_alpha: 32
-    target_modules: 
-    lora_dropout: 0.05
-    bias: none
-    inference_mode: false
+  peft_config_additional:
+    target_modules: all
     task_type: CAUSAL_LM
     modules_to_save:
       - embed_tokens
@@ -128,12 +123,7 @@ rm:
   metrics:
     - accuracy
   max_replies: 4
-  peft_config:
-    r: 16
-    lora_alpha: 32
-    lora_dropout: 0.05
-    bias: none
-    inference_mode: false
+  peft_config_additional:
     target_modules:
     task_type: SEQ_CLS
   dataset:

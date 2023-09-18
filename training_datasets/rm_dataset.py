@@ -229,7 +229,7 @@ class WebGPT(Dataset):
         super().__init__()
         self.rows = []
 
-        dataset = load_dataset("openai/webgpt_comparisons")
+        dataset = load_dataset("openai/webgpt_comparisons",cache_dir=cache_dir)
         question_answer_dict = defaultdict(dict)
 
         for row in dataset["train"]:

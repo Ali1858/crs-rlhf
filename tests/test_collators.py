@@ -4,7 +4,6 @@ import json
 
 from training_datasets.collators import DialogueDataCollator, RankingDataCollator
 from model_training.training_utils import get_tokenizer
-from model_training import rm_train, sft_train
 from utils import read_yaml
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
@@ -17,14 +16,11 @@ class TestDialogueDataCollator(unittest.TestCase):
         self.maxDiff=None
         
         conf = read_yaml('./configs/config.yaml')
-        config.update(conf["sft"])
+        config.update(conf["pre_sft"])
         config.update(conf["common"])
-        config['debug'] = True
 
         # Create a Namespace object for config
         self.config_ns = argparse.Namespace(**config)
-
-        # self.sanity_checks_sft(self.config_ns)
 
         self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
         with open("tests/dummy_data.json", "r") as f:
@@ -33,22 +29,6 @@ class TestDialogueDataCollator(unittest.TestCase):
             self.expected_labels = j["sft_expected_labels"]
             self.expected_targets = j["sft_expected_targets"]
     
-
-    def sanity_checks_sft(self,args):
-        trainer = sft_train.main(args,"output_dir")
-        tokenizer = trainer.tokenizer
-
-        dl = trainer.get_train_dataloader()
-
-        item = next(iter(dl))
-        
-        inp = item["input_ids"][0].view(-1)
-        target = item["targets"][0].view(-1)
-        mask = item["label_masks"][0].view(-1).bool()
-        print(f'inp {tokenizer.decode(inp)} -->\n masked target {tokenizer.decode(inp[mask])}')
-        print('====')
-        print(f'target {tokenizer.decode(target)} -->\n masked target {tokenizer.decode(target[mask])}')
-
 
     def test_data_collation(self):
         # Initialize the data collator
@@ -119,19 +99,6 @@ class TestRankingDataCollator(unittest.TestCase):
             self.expected_output = j["rm_expected_output"]
             self.expected_cu_lens = j["rm_expected_cu_lens"]
 
-        
-    def sanity_checks_rm(self,args):
-            trainer = rm_train.main(args,"output_dir")
-            tokenizer = trainer.tokenizer
-
-            dl = trainer.get_train_dataloader()
-
-            batch, cu_lens = next(iter(dl))
-            
-            inp = batch["input_ids"][0].view(-1)
-            print(f' {tokenizer.decode(inp)}')
-            print('====')
-    
 
     def test_data_collation(self):
         # Initialize the data collator
@@ -162,4 +129,3 @@ class TestRankingDataCollator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-    # sanity_checks_rm(config_ns)
