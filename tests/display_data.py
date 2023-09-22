@@ -18,7 +18,7 @@ def display_data(data,collator,tokenizer,each_fn):
     for k,v in data.items():
         print(f"{'==='*10} Displaying one instance for {k} in ...")
         item = collator([v[0]])
-        if len(item) > 1:
+        if type(item)==int and len(item) > 1:
             item = item[0]
         each_fn(item,tokenizer)
 

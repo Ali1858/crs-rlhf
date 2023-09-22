@@ -36,20 +36,8 @@ def main(conf):
     # needs to happen before model loading in case of stage 3 training
     optimizer =  OptimizerNames.ADAMW_BNB if conf.int8_training else OptimizerNames.ADAMW_HF
     accuracy = evaluate.load("accuracy")
-    # device_map = "auto"#{"":1}
+    device_map = "auto"#"{"":0}"
 
-    device_map = {'model.embed_tokens': 0, 'model.layers.0': 1, 'model.layers.1': 1,
-            'model.layers.2': 1, 'model.layers.3': 1, 'model.layers.4': 1, 
-            'model.layers.5': 1, 'model.layers.6': 1, 'model.layers.7': 1, 
-            'model.layers.8': 1, 'model.layers.9': 1, 'model.layers.10': 1,
-            'model.layers.11': 1, 'model.layers.12': 1, 'model.layers.13': 1,
-            'model.layers.14': 1, 'model.layers.15': 1, 'model.layers.16': 1,
-            'model.layers.17': 1, 'model.layers.18': 1, 'model.layers.19': 1,
-            'model.layers.20': 1, 'model.layers.21': 1, 'model.layers.22': 1,
-            'model.layers.23': 1, 'model.layers.24': 1, 'model.layers.25': 1,
-            'model.layers.26': 1, 'model.layers.27': 1, 'model.layers.28': 1,
-            'model.layers.29': 1, 'model.layers.30': 1, 'model.layers.31': 1,
-            'model.norm': 1, 'lm_head': 1}
     args = TrainingArguments(
         output_dir=conf.output_dir,
         num_train_epochs=conf.num_train_epochs,
@@ -116,13 +104,19 @@ def main(conf):
     
     if not conf.debug:
         import wandb
+        resume = None
+        if conf.checkpoint_name:
+            resume = conf.checkpoint_name +'_'+ conf.checkpoint_number
+        
+        os.environ["WANDB_WATCH"] = "all"
         wandb_project_name = f"supervised-finetuning{wandb_suffix}"
         wandb.init(
             project=wandb_project_name,
             entity=None,
-            resume=conf.resume_from_checkpoint,
+            resume=resume,
             name=conf.name,
             config=conf,
+            save_code=True,
         )
 
     trainer = SFTTrainer(
@@ -139,7 +133,7 @@ def main(conf):
 
 
 def train(trainer,conf):
-    trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint)
+    trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint is not None)
     trainer.model.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
     trainer.tokenizer.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
 
@@ -166,8 +160,13 @@ if __name__ == "__main__":
     args = parser.parse_args(remaining)
 
 
-    if config_subset == "sft":
-        args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,"final_checkpoint") 
+    if args.checkpoint_name is not None:
+        if args.checkpoint_number is None:
+            checkpoint_number="final_checkpoint"
+        else:
+            checkpoint_number = args.checkpoint_number
+        args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,checkpoint_number) 
+        print(f'{"==="*10} resuming from checkpoint {args.resume_from_checkpoint}')
 
     debug_tag = "_dbug" if args.debug else ""
     args.name = f"{args.name}{debug_tag}{args.name_suffix}"

@@ -193,6 +193,7 @@ def load_sft_dataset(conf,eos_token):
         conf.dataset = {key:conf.dataset[key]}
 
     for ds_name, dataset_kwargs in conf.dataset.items():
+        dataset_kwargs["max_val_set"] = int(dataset_kwargs["max_val_set"]*conf.hpt_data_frac) if conf.hpt_data_frac else dataset_kwargs["max_val_set"]
         print(f'===loading the {ds_name} dataset===\n')
         ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,eos_token=eos_token,**dataset_kwargs)
         if type(ds) == tuple:
@@ -201,6 +202,11 @@ def load_sft_dataset(conf,eos_token):
             train_ds,val_ds = train_val_dataset(ds,name=ds_name,
                                                 val_split=dataset_kwargs["val_split"],
                                                 max_val_set=dataset_kwargs["max_val_set"])
+        if conf.hpt_data_frac:
+            hpt_size = int(len(train_ds)*conf.hpt_data_frac)
+            subset_indices = np.random.choice(len(train_ds), size=hpt_size, replace=False)
+            train_ds = Subset(train_ds, subset_indices)
+
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds
     train = ConcatDataset(train_datasets)
@@ -237,6 +243,7 @@ def load_rm_dataset(conf):
     for ds_name, dataset_kwargs in conf.dataset.items():
         print(f'===loading the {ds_name} dataset===\n')
         max_val_set = dataset_kwargs.get("max_val_set",None)
+        max_val_set = int(max_val_set*conf.hpt_data_frac) if conf.hpt_data_frac and max_val_set else max_val_set
 
         if len(dataset_kwargs.get("splits",[])) ==2:
             train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][0])
@@ -247,6 +254,11 @@ def load_rm_dataset(conf):
         if max_val_set and len(val_ds) > max_val_set:
             subset_indices = np.random.choice(len(val_ds), size=max_val_set, replace=False)
             val_ds = Subset(val_ds, subset_indices)
+        
+        if conf.hpt_data_frac:
+            hpt_size = int(len(train_ds)*conf.hpt_data_frac)
+            subset_indices = np.random.choice(len(train_ds), size=hpt_size, replace=False)
+            train_ds = Subset(train_ds, subset_indices)
 
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds

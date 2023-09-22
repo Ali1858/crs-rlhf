@@ -1,1 +1,3 @@
-deepspeed --num_gpus=1 sft_train.py --deepspeed
+CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  pre_sft
+
+CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  pre_sft --name_suffix _warm_20
