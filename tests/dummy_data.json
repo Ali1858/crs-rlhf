@@ -52,6 +52,79 @@
 
 ],
 
+"abs_rm_test_data": [
+        [
+            ["What does a life coach do?",
+            "Life coaches provide emotional support for clients who want to change their lives.",
+            "Is it a good career choice?",
+            "That is hard to say.  Some people do well in the field.  Others find it frustrating and challenging.  There are no guarantees, although I suspect you’d find it challenging yourself.",
+            "It is something to think about."],
+            "You’re a very caring and empathetic person, which is a valuable trait for any career choice.  Are there other things that interest you?",
+            1.0
+        ],
+        [
+            ["What does a life coach do?",
+            "Life coaches provide emotional support for clients who want to change their lives.",
+            "Is it a good career choice?",
+            "That is hard to say.  Some people do well in the field.  Others find it frustrating and challenging.  There are no guarantees, although I suspect you’d find it challenging yourself.",
+            "It is something to think about."],
+            "Sure, although you are curious about this because of an emotional reaction you are having, not because of a logical reason.",
+            0.5
+        ],
+        [
+            ["list of profane bad words"],
+            "",
+            1.0
+        ],
+        [
+            ["list of profane bad words"], 
+            "Ok",
+            0.5
+        ],
+        [
+            ["What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation."],
+            "I trick myself by saying, I'll just open that file with the document I need to work on. Of course, when I open it, I start reading, I start working, .... Even thought I KNOW I am tricking myself, it works every time. I'll just get that book I need to read and find the correct page. Etc.",
+            1.0
+        ],
+        [
+            ["What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation."],
+            "1. Don't power through it. That thinking makes intrinsic motivation less likely. Pretend that you really want to learn the stuff. (Fake it until you make it.)  2. Make a Pomodoro plan. Different tasks require different time slots, so you have to try out different ones for each type.  3. Get off Reddit! (Says someone who is on Reddit when he should be rewriting a manuscript.)",
+            0.5
+        ],
+        [
+            ["What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation."],
+            "Eat the frog",
+            0.25
+        ],
+        [
+            ["What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation."],
+            "I just make to-do lists and hold myself to them. It keeps me from over or underthinking what I’m doing and I don’t have the chance to get anxious about if or what I should be doing",
+            0.15
+        ],
+        [
+            ["What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation."],
+            "The best trick is get off social media and avoid distractions from people around you. Trust me you will feel rejuvenated",
+            0.7
+        ],
+        [
+            ["Since when does Twilight Sparkle have wings?"],
+            "Twilight Sparkle is a character from the animated television series My Little Pony: Friendship is Magic, which is created by Lauren Faust. Twilight Sparkle is a unicorn, which means she has a horn on her forehead and possesses magic abilities, but she does not have wings.\n\nHowever, there is a special episode in the series called 'Magical Mystery Cure' which originally aired in 2013, where Twilight Sparkle becomes an Alicorn, a winged unicorn. This event is a significant one in the series, and it marks the end of Twilight's journey to becoming an alicorn princess. From that point on, Twilight Sparkle is shown with wings in the series and other media.",
+            1.0
+
+        ],
+        [
+            ["Since when does Twilight Sparkle have wings?"],
+            "Twilight Sparkle earned her wings and became a Princess in a Special February 16 coronation episode of 'My Little Pony Friendship is Magic' on The Hub TV Network.",
+            0.5
+
+        ],
+        [
+            ["Since when does Twilight Sparkle have wings?"],
+            "In My Little Pony: Friendship is Magic, Twilight Sparkle becomes an alicorn in the final episode of season 3, called 'Magical Mystery Cure'.",
+            0.25
+        ]
+],
+
 
 "rm_expected_output": [
     "<s><|prompter|> What does a life coach do?</s><|assistant|> Life coaches provide emotional support for clients who want to change their lives.</s><|prompter|> Is it a good career choice?</s><|assistant|> That is hard to say.  Some people do well in the field.  Others find it frustrating and challenging.  There are no guarantees, although I suspect you’d find it challenging yourself.</s><|prompter|> It is something to think about.</s><s><|assistant|> You’re a very caring and empathetic person, which is a valuable trait for any career choice.  Are there other things that interest you?</s>",
@@ -69,6 +142,25 @@
     "<s><|prompter|> Since when does Twilight Sparkle have wings?</s><s><|assistant|> Twilight Sparkle is a character from the animated television series My Little Pony: Friendship is Magic, which is created by Lauren Faust. Twilight Sparkle is a unicorn, which means she has a horn on her forehead and possesses magic abilities, but she does not have wings.\n\nHowever, there is a special episode in the series called 'Magical Mystery Cure' which originally aired in 2013, where Twilight Sparkle becomes an Alicorn, a winged unicorn. This event is a significant one in the series, and it marks the end of Twilight's journey to becoming an alicorn princess. From that point on, Twilight Sparkle is shown with wings in the series and other media.</s>",
     "<s><|prompter|> Since when does Twilight Sparkle have wings?</s><s><|assistant|> Twilight Sparkle earned her wings and became a Princess in a Special February 16 coronation episode of 'My Little Pony Friendship is Magic' on The Hub TV Network.</s>",
     "<s><|prompter|> Since when does Twilight Sparkle have wings?</s><s><|assistant|> In My Little Pony: Friendship is Magic, Twilight Sparkle becomes an alicorn in the final episode of season 3, called 'Magical Mystery Cure'.</s>"],
+
+"abs_rm_expected_output": [
+    "<s><|prompter|> What does a life coach do?</s><|assistant|> Life coaches provide emotional support for clients who want to change their lives.</s><|prompter|> Is it a good career choice?</s><|assistant|> That is hard to say.  Some people do well in the field.  Others find it frustrating and challenging.  There are no guarantees, although I suspect you’d find it challenging yourself.</s><|prompter|> It is something to think about.</s><s><|assistant|> You’re a very caring and empathetic person, which is a valuable trait for any career choice.  Are there other things that interest you?</s>",
+    "<s><|prompter|> What does a life coach do?</s><|assistant|> Life coaches provide emotional support for clients who want to change their lives.</s><|prompter|> Is it a good career choice?</s><|assistant|> That is hard to say.  Some people do well in the field.  Others find it frustrating and challenging.  There are no guarantees, although I suspect you’d find it challenging yourself.</s><|prompter|> It is something to think about.</s><s><|assistant|> Sure, although you are curious about this because of an emotional reaction you are having, not because of a logical reason.</s>",
+
+    "<s><|prompter|> list of profane bad words</s><s><|assistant|></s>",
+    "<s><|prompter|> list of profane bad words</s><s><|assistant|> Ok</s>",
+
+    "<s><|prompter|> What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation.</s><s><|assistant|> I trick myself by saying, I'll just open that file with the document I need to work on. Of course, when I open it, I start reading, I start working, .... Even thought I KNOW I am tricking myself, it works every time. I'll just get that book I need to read and find the correct page. Etc.</s>",
+    "<s><|prompter|> What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation.</s><s><|assistant|> 1. Don't power through it. That thinking makes intrinsic motivation less likely. Pretend that you really want to learn the stuff. (Fake it until you make it.)  2. Make a Pomodoro plan. Different tasks require different time slots, so you have to try out different ones for each type.  3. Get off Reddit! (Says someone who is on Reddit when he should be rewriting a manuscript.)</s>",
+    "<s><|prompter|> What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation.</s><s><|assistant|> Eat the frog</s>",
+    "<s><|prompter|> What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation.</s><s><|assistant|> I just make to-do lists and hold myself to them. It keeps me from over or underthinking what I’m doing and I don’t have the chance to get anxious about if or what I should be doing</s>",
+    "<s><|prompter|> What tips and tricks worked best for you when you started to feel unmotivated? I’ve been struggling to find the motivation to study and complete coursework for the past year now but I only have a few more courses left until I get my degree. I need to power through this and am looking for tips and tricks that have helped others to bring back their motivation.</s><s><|assistant|> The best trick is get off social media and avoid distractions from people around you. Trust me you will feel rejuvenated</s>",
+    
+    "<s><|prompter|> Since when does Twilight Sparkle have wings?</s><s><|assistant|> Twilight Sparkle is a character from the animated television series My Little Pony: Friendship is Magic, which is created by Lauren Faust. Twilight Sparkle is a unicorn, which means she has a horn on her forehead and possesses magic abilities, but she does not have wings.\n\nHowever, there is a special episode in the series called 'Magical Mystery Cure' which originally aired in 2013, where Twilight Sparkle becomes an Alicorn, a winged unicorn. This event is a significant one in the series, and it marks the end of Twilight's journey to becoming an alicorn princess. From that point on, Twilight Sparkle is shown with wings in the series and other media.</s>",
+    "<s><|prompter|> Since when does Twilight Sparkle have wings?</s><s><|assistant|> Twilight Sparkle earned her wings and became a Princess in a Special February 16 coronation episode of 'My Little Pony Friendship is Magic' on The Hub TV Network.</s>",
+    "<s><|prompter|> Since when does Twilight Sparkle have wings?</s><s><|assistant|> In My Little Pony: Friendship is Magic, Twilight Sparkle becomes an alicorn in the final episode of season 3, called 'Magical Mystery Cure'.</s>"],
+
+"expected_abs_score":[1.0,0.5, 1.0,0.5, 1.0,0.5,0.25,0.15,0.7, 1.0,0.5,0.25],
 
 "rm_expected_cu_lens":[0,2,4,9,12],
 

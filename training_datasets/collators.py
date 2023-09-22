@@ -272,3 +272,62 @@ class RankingDataCollator:
         if "token_type_ids" in batch:
             batch.pop("token_type_ids")
         return batch, cu_lens
+
+
+@dataclass
+class AbsoluteScoreDataCollator:
+    """
+    Data collator that will dynamically pad the inputs for multiple choice received.
+    """
+
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    min_prefix_length: int = 256
+    pad_to_multiple_of: Optional[int] = None
+
+    def process_one(self,example):
+        assert self.tokenizer.eos_token
+        eos = self.tokenizer.eos_token
+
+        prefix, reply, score = example
+        # append eos token to each messages
+        prefix = "".join(get_rm_formatted(eos,prefix))
+        reply = get_rm_formatted(eos,reply,is_replies=True)
+            
+        prefix_tokens = self.tokenizer(prefix, padding=False, truncation=False)
+        reply_tokens = self.tokenizer(reply, padding=False, truncation=False)
+
+        prefix_len = len(prefix_tokens.input_ids)
+        max_prefix_len = (
+            prefix_len
+            if self.max_length is None
+            else max(self.min_prefix_length, self.max_length - len(reply_tokens.input_ids))
+        )
+        max_suffix_len = len(reply_tokens.input_ids) if self.max_length is None else self.max_length - max_prefix_len
+
+        for k in reply_tokens.keys():
+            reply_tokens[k] = prefix_tokens[k][-max_prefix_len:] + reply_tokens[k][:max_suffix_len]
+
+        return reply_tokens, score
+
+    def __call__(self, examples):
+        tokenized,scores = [], []
+        for example in examples:
+            tokens,score = self.process_one(example)
+            tokenized.append(tokens)
+            scores.append(score)
+
+        batch = self.tokenizer.pad(
+            tokenized,
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+        )
+
+        batch["labels"] = scores
+
+        if "token_type_ids" in batch:
+            batch.pop("token_type_ids")
+        return batch

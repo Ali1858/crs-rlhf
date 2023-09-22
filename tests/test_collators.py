@@ -2,7 +2,7 @@ import unittest
 import argparse
 import json
 
-from training_datasets.collators import DialogueDataCollator, RankingDataCollator
+from training_datasets.collators import DialogueDataCollator, RankingDataCollator, AbsoluteScoreDataCollator
 from model_training.training_utils import get_tokenizer
 from utils import read_yaml
 from constants import TOKENIZER_SEPECIAL_TOKENS
@@ -126,6 +126,58 @@ class TestRankingDataCollator(unittest.TestCase):
             self.assertEqual(decoded_label, expected_label)
 
         self.assertEqual(cu_lens,self.expected_cu_lens)
+
+
+class TestAbsoluteScoreDataCollator(unittest.TestCase):
+
+    def setUp(self):
+        # Create a tokenizer for testing
+        config = {}
+        self.maxDiff=None
+        
+        conf = read_yaml('./configs/config.yaml')
+        config.update(conf["rm"])
+        config.update(conf["common"])
+        config['debug'] = True
+
+        # Create a Namespace object for config
+        self.config_ns = argparse.Namespace(**config)
+        self.config_ns.model_name = self.config_ns.base_model_name
+
+        self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
+        with open("tests/dummy_data.json", "r") as f:
+            j = json.load(f)
+            self.test_data = j["abs_rm_test_data"]
+            self.expected_output = j["abs_rm_expected_output"]
+            self.expected_abs_score = j["expected_abs_score"]
+
+
+    def test_data_collation(self):
+        # Initialize the data collator
+        data_collator = AbsoluteScoreDataCollator(tokenizer=self.tokenizer,
+                                              max_length=2048,
+                                              pad_to_multiple_of=16,)
+        
+        # Call the data collator with the test data
+        batch = data_collator(self.test_data)
+
+        print(f'===shape of output from data collator {batch["input_ids"].shape}===')
+
+
+        self.assertIn("input_ids", batch)
+        self.assertIn("attention_mask", batch)
+        
+        # Decode label tokens to text
+        decoded_input = [self.tokenizer.decode(tokens) for tokens in batch["input_ids"]]
+        self.assertEqual(len(decoded_input),len(self.expected_output))
+        
+        # Assert that the decoded label text matches the expected labels
+        for decoded_label, expected_label in zip(decoded_input, self.expected_output):
+            parts = [part for part in decoded_label.split('</s>') if part]
+            decoded_label = '</s>'.join(parts) + '</s>'
+            self.assertEqual(decoded_label, expected_label)
+
+        self.assertEqual(batch["labels"],self.expected_abs_score)
 
 if __name__ == "__main__":
     unittest.main()

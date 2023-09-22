@@ -193,6 +193,26 @@ class RMDataset(Dataset):
         return prefix,replies
 
 
+class AbsoluteRMDataset(Dataset):
+    def __init__(self, data: list):
+        super().__init__()
+        self.data = []
+        for row in data:
+            message,replies = row
+            for r in replies:
+                reply_text,labels = r
+                print(labels)
+                reward_score = labels["quality"]
+                self.data.append((message,reply_text,reward_score))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        prefix, reply,reward_score = self.data[index]
+        return prefix,reply,reward_score
+
+
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
 """
@@ -213,6 +233,37 @@ def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
 
     def flatten(ds: ListDataset) -> RMDataset:
         return RMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
+
+    train = flatten(splits[0])
+    val = flatten(splits[1])
+    print(f"OASST HF dataset: {len(train)=}, {len(val)=}")
+    return train,val
+
+
+def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
+    desired_labels = ["violence","creativity","helpfulness","humor","toxicity","quality"]
+    generator = Generator()
+    generator.manual_seed(manual_seed)
+    threads_per_tree = load_oasst(mode="rm",lang=lang)
+
+    def process_thread(thread):
+        prefix = [m.text for m in thread]
+        replies = []
+
+        for r in thread[-1].replies:
+            if r.role == "assistant" and r.rank is not None and r.labels is not None:
+                labels = {}
+                for l in desired_labels:
+                    labels[l] = r.get_label_value(l)
+                replies.append((r.text,labels))
+        return (prefix, replies)
+    
+    # split on tree basis, messages from same tree must not end up in different splits
+    trees = ListDataset(threads_per_tree,)
+    splits = random_split(trees, lengths=[1.0 - val_split, val_split], generator=generator)
+
+    def flatten(ds: ListDataset) -> AbsoluteRMDataset:
+        return AbsoluteRMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
 
     train = flatten(splits[0])
     val = flatten(splits[1])

@@ -226,13 +226,14 @@ def load_sft_dataset(conf,eos_token):
 
           
 def load_rm_dataset(conf):
-    from training_datasets.rm_dataset import AnthropicRLHF, HellaSwagDataset, SHPDataset, get_oasst_rm, get_webgpt_rm
+    from training_datasets.rm_dataset import AnthropicRLHF, HellaSwagDataset, SHPDataset, get_oasst_abs_rm,get_oasst_rm, get_webgpt_rm
     dataset_func_mapping  = {
                         "anthropic": AnthropicRLHF,
                         "hellaswag": HellaSwagDataset,
                         "shp":SHPDataset,
                         "oasst_export":get_oasst_rm,
-                        "webgpt": get_webgpt_rm
+                        "webgpt": get_webgpt_rm,
+                        "oasst_export_abs": get_oasst_abs_rm
                         }
     train_datasets = []
     evals = {}
