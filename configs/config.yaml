@@ -56,9 +56,9 @@ pre_sft:
     math_instruction:
       val_split: 0.05
       max_val_set: 200
-    webgpt:
-         val_split: 0.05
-         max_val_set: 1000
+    # webgpt:
+    #      val_split: 0.05
+    #      max_val_set: 1000
   collator:
     max_length: 2048
     random_offset_probability: 0.5
@@ -69,23 +69,23 @@ pre_sft:
 
 sft:
   name: &sft_adapter LLama-2-7b_oasst_sft
-  train_batch: 2
-  eval_batch: 2
+  train_batch: 4
+  eval_batch: 4
   lr: 1e-5
   num_train_epochs: 3
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 16
   eval_accumulation_steps: 
-  log_steps: 100
+  log_steps: 25
   eval_steps: 100
-  save_steps: 200
+  save_steps: 500
   lr_scheduler_type: cosine
-  warmup_steps: 100
+  warmup_steps: 30
   weight_decay: 0.000001
   gradient_checkpointing: true
   adam_beta1: 0.9
   adam_beta2: 0.95
   adam_epsilon: 1e-12
-  checkpoint_name: *pre_sft_name
+  checkpoint_name: Llama-2-7b_pre_sft_4bit #*pre_sft_name
   peft_config_additional:
     target_modules: all
     task_type: CAUSAL_LM
@@ -94,8 +94,8 @@ sft:
       - lm_head
   dataset:
     oasst_export:
-        val_split: 0.2
-        max_val_set: 200
+        val_split: 0.05
+        max_val_set: 
         lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
   collator:
     max_length: 2048

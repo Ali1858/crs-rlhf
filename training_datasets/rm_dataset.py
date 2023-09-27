@@ -201,7 +201,6 @@ class AbsoluteRMDataset(Dataset):
             message,replies = row
             for r in replies:
                 reply_text,labels = r
-                print(labels)
                 reward_score = labels["quality"]
                 self.data.append((message,reply_text,reward_score))
 
@@ -248,22 +247,22 @@ def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
 
     def process_thread(thread):
         prefix = [m.text for m in thread]
+        replies_temp = [r for r in thread[-1].replies if r.role == "assistant" and r.rank is not None and r.labels is not None]
+        replies_temp = sorted(replies_temp, key=lambda r: r.rank)
         replies = []
-
-        for r in thread[-1].replies:
-            if r.role == "assistant" and r.rank is not None and r.labels is not None:
-                labels = {}
-                for l in desired_labels:
-                    labels[l] = r.get_label_value(l)
-                replies.append((r.text,labels))
+        for r in replies_temp:
+            labels = {}
+            for l in desired_labels:
+                labels[l] = r.get_label_value(l)
+            replies.append((r.text,labels))
         return (prefix, replies)
     
     # split on tree basis, messages from same tree must not end up in different splits
     trees = ListDataset(threads_per_tree,)
     splits = random_split(trees, lengths=[1.0 - val_split, val_split], generator=generator)
 
-    def flatten(ds: ListDataset) -> AbsoluteRMDataset:
-        return AbsoluteRMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
+    def flatten(ds: ListDataset) -> RMDataset:
+        return RMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
 
     train = flatten(splits[0])
     val = flatten(splits[1])

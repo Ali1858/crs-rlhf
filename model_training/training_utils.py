@@ -3,6 +3,7 @@ import math
 
 import torch
 import transformers
+from transformers import BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from peft import PeftConfig, PeftModel
 
@@ -50,10 +51,18 @@ def get_model(tokenizer,device,config,pad_vocab_size_to_multiple_of=16,need_embe
 
     print('load {config.model_name} model')
 
+
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+
     if not reward_model:
         model = transformers.AutoModelForCausalLM.from_pretrained(config.model_name,
                                                                   torch_dtype=dtype,
-                                                                  load_in_8bit=config.int8_training,
+                                                                #   load_in_8bit=config.int8_training,
+                                                                    quantization_config=bnb_config,
                                                                   cache_dir=CACHE_DIR,
                                                                   device_map=device)
     else:

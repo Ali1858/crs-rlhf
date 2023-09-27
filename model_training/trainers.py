@@ -202,3 +202,62 @@ class RMTrainer(Trainer):
             worker_init_fn=seed_worker,
         )
         return dataloader
+    
+
+"""Taken from:
+https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_rm.py#L31
+"""
+class AbsRMTrainer(Trainer):
+    def __init__(self, model, args, train_collate_fn,**kwargs):
+        super().__init__(model=model,args=args,**kwargs)
+        self.train_collate_fn = train_collate_fn
+        self.loss_fct = None
+
+    def compute_loss(self, model, inputs, return_logits=False):
+        logits = model(input_ids=inputs["input_ids"],
+              attention_mask=inputs["attention_mask"],
+              ).logit
+
+        loss = self.loss_fct(logits)
+        return (loss, logits) if return_logits else loss
+    
+    
+    def prediction_step(
+        self,
+        model,
+        inputs,
+        prediction_loss_only,
+        ignore_keys,
+    ):
+        with torch.no_grad():
+            batch = self._prepare_inputs(inputs)
+            loss, logits = self.compute_loss(model, batch, return_logits=True)
+
+        loss = loss.mean().detach()
+
+        labels = []
+        
+        # make sure labels are same as logits, needed for deepspeed
+        labels = torch.tensor(labels, device=logits.device, requires_grad=False).view(-1, 1)
+        return (loss, logits.T, labels.T)  # transposed to avoid truncation in evaluation_loop
+
+    
+    def get_train_dataloader(self):
+        data_collator = self.train_collate_fn
+        train_dataset = self.train_dataset
+
+        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        
+        train_sampler = self._get_train_sampler()
+        dataloader = DataLoader(
+            train_dataset,
+            batch_size=self._train_batch_size,
+            sampler=train_sampler,
+            collate_fn=data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+            worker_init_fn=seed_worker,
+        )
+        return dataloader

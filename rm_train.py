@@ -6,8 +6,8 @@ from transformers import TrainingArguments
 from transformers.training_args import OptimizerNames
 
 from training_datasets.dataset_utils import load_rm_dataset
-from training_datasets.collators import RankingDataCollator
-from model_training.trainers import RMTrainer
+from training_datasets.collators import RankingDataCollator, AbsoluteScoreDataCollator
+from model_training.trainers import RMTrainer, AbsRMTrainer
 from model_training.training_utils import merge_and_save_peft_model, get_model, get_tokenizer
 from utils import read_yaml, parse_additional_args, print_yaml_config
 from constants import TOKENIZER_SEPECIAL_TOKENS
@@ -54,18 +54,21 @@ def main(conf):
     model = get_model(tokenizer, device=device_map,config=conf, need_embedding_resize=False,reward_model=True)
     # metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
-    train_collate_fn = RankingDataCollator(
-        tokenizer,
-        max_length=conf.collator["max_length"],
-        pad_to_multiple_of=16,
-        max_replies=conf.max_replies
-    )
-    eval_collate_fn = RankingDataCollator(
-        tokenizer,
-        max_length=conf.collator["max_length"],
-        pad_to_multiple_of=16,
-        max_replies=conf.max_replies
-    )
+    if conf.is_abs_rm:
+        Trainer = AbsRMTrainer
+        collate_fn = AbsoluteScoreDataCollator(
+            tokenizer,
+            max_length=conf.collator["max_length"],
+            pad_to_multiple_of=16,
+        )
+    else:
+        Trainer = RMTrainer
+        collate_fn = RankingDataCollator(
+            tokenizer,
+            max_length=conf.collator["max_length"],
+            pad_to_multiple_of=16,
+            max_replies=conf.max_replies
+        )
 
     wandb_suffix = ""
     if conf.debug:
@@ -94,13 +97,13 @@ def main(conf):
 
         )
 
-    trainer = RMTrainer(
+    trainer = Trainer(
     model=model,
     args=args,
-    train_collate_fn=train_collate_fn,
+    train_collate_fn=collate_fn,
     train_dataset=train_ds,
     eval_dataset=eval_ds,
-    data_collator=eval_collate_fn,
+    data_collator=collate_fn,
     tokenizer=tokenizer,
     # compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function))
     )
