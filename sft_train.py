@@ -62,7 +62,7 @@ def main(conf):
         save_steps=conf.save_steps,
         eval_accumulation_steps=conf.eval_accumulation_steps,
         resume_from_checkpoint=conf.resume_from_checkpoint,
-        report_to=conf.report_to
+        report_to=conf.report_to,
     )
 
     tokenizer, eos_token= get_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS)
@@ -103,17 +103,12 @@ def main(conf):
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
     
     if not conf.debug:
-        import wandb
-        resume = None
-        if conf.checkpoint_name:
-            resume = conf.checkpoint_name +'_'+ conf.checkpoint_number
-        
+        import wandb        
         os.environ["WANDB_WATCH"] = "all"
         wandb_project_name = f"supervised-finetuning{wandb_suffix}"
         wandb.init(
             project=wandb_project_name,
             entity=None,
-            resume=resume,
             name=conf.name,
             config=conf,
             save_code=True,
@@ -162,10 +157,10 @@ if __name__ == "__main__":
 
     if args.checkpoint_name is not None:
         if args.checkpoint_number is None:
-            checkpoint_number="final_checkpoint"
+            args.checkpoint_number="final_checkpoint"
         else:
-            checkpoint_number = args.checkpoint_number
-        args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,checkpoint_number) 
+            args.checkpoint_number = args.checkpoint_number
+        args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,args.checkpoint_number) 
         print(f'{"==="*10} resuming from checkpoint {args.resume_from_checkpoint}')
 
     debug_tag = "_dbug" if args.debug else ""
