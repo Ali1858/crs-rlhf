@@ -46,14 +46,10 @@ def get_qa_formatted(
 
         for i, m in enumerate(conversations):
             if m[1] == "prompter":
-                if context:
-                    system_tag = f"{QA_SPECIAL_TOKENS['System']}{context}\n{eos_token}"
-                else:
-                    system_tag = ""
                 if i==0 and system_msg:
-                    output.append(f"{QA_SPECIAL_TOKENS['System']}{system_msg}{eos_token}{QA_SPECIAL_TOKENS['Question']}{m[0]}{eos_token}{system_tag}")
+                    output.append(f"{QA_SPECIAL_TOKENS['System']}{system_msg}{eos_token}{QA_SPECIAL_TOKENS['Question']}{m[0]}{eos_token}")
                 else:
-                    output.append(f"{QA_SPECIAL_TOKENS['Question']}{m[0]}{eos_token}{system_tag}")
+                    output.append(f"{QA_SPECIAL_TOKENS['Question']}{m[0]}{eos_token}")
             else:
                 output.append(f"{QA_SPECIAL_TOKENS['Answer']}{m[0]}{eos_token}")
 

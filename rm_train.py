@@ -8,17 +8,19 @@ from transformers.training_args import OptimizerNames
 from training_datasets.dataset_utils import load_rm_dataset
 from training_datasets.collators import RankingDataCollator, AbsoluteScoreDataCollator
 from model_training.trainers import RMTrainer, AbsRMTrainer
-from model_training.training_utils import merge_and_save_peft_model, get_model, get_tokenizer
-from utils import read_yaml, parse_additional_args, print_yaml_config
+from model_training.training_utils import merge_and_save_peft_model, get_model_and_tokenizer
+from utils import (parse_additional_args, print_yaml_config, 
+                   parse_arguments, init_or_resume_from,
+                    debug_configurations, save_trained_model)
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
 
-def main(conf):
+def create_trainer(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
 
     # needs to happen before model loading in case of stage 3 training
-    optimizer =  OptimizerNames.ADAMW_BNB if conf.int8_training else OptimizerNames.ADAMW_HF
+    optimizer =  OptimizerNames.ADAMW_BNB
     device_map = "auto"#"{"":0}"
 
     args = TrainingArguments(
@@ -47,11 +49,14 @@ def main(conf):
         resume_from_checkpoint=conf.resume_from_checkpoint,
         report_to=conf.report_to,
     )
+
     conf.model_name = conf.merged_adapter_path
+    assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
+    special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
     merge_and_save_peft_model(conf)
-    tokenizer, eos_token= get_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS,add_additional_special_tokens=False)
     train_ds , eval_ds = load_rm_dataset(conf)
-    model = get_model(tokenizer, device=device_map,config=conf, need_embedding_resize=False,reward_model=True)
+    model,tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens, need_embedding_resize=False,reward_model=True)
+
     # metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
     if conf.is_abs_rm:
@@ -109,59 +114,19 @@ def main(conf):
     )
     return trainer
 
-
-def train(trainer,conf):
-    trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint is not None)
-    trainer.model.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
-    trainer.tokenizer.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
-
 if __name__ == "__main__":
-    config = {}
-    parser = argparse.ArgumentParser(description="Parse configuration")
-    parser.add_argument("--config_subset",type=str, help="Subset of the configs to use")
-    parser.add_argument("--name_suffix", type=str, default="", help="Suffix name while performing multiple experiment. Keep it  simple because by default wandb store configs of each train")
-
-    args, remaining = parser.parse_known_args()
-
-    config_subset = args.config_subset
-    conf = read_yaml('./configs/config.yaml')
-    config.update(conf["common"])
-    config.update(conf[args.config_subset])
-    config["name_suffix"] = args.name_suffix
-
-
-    for k,v in config.pop("peft_config_additional").items():
-        config["peft_config"][k]=v
-
-
+    config, remaining_args = parse_arguments()
     parser = parse_additional_args(config)
-    args = parser.parse_args(remaining)
+    args = parser.parse_args(remaining_args)
 
-    if args.checkpoint_name is not None:
-        if args.checkpoint_number is None:
-            checkpoint_number="final_checkpoint"
-        else:
-            checkpoint_number = args.checkpoint_number
-        args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,checkpoint_number) 
-        print(f'{"==="*10} resuming from checkpoint {args.resume_from_checkpoint}')
-
-    args.adpater_path = os.path.join(args.output_dir,config["adpater_name"],'final_checkpoint')
-    args.merged_adapter_path = os.path.join(args.output_dir,config["adpater_name"],'merged')
+    init_or_resume_from(args)
 
     debug_tag = "_dbug" if args.debug else ""
     args.name = f"{args.name}{debug_tag}{args.name_suffix}"
-    args.output_dir = os.path.join(args.output_dir,args.name)
+    args.output_dir = os.path.join(args.output_dir, args.name)
 
+    debug_configurations(args)
 
-    if args.debug:
-        args.report_to="none"
-        args.train_batch=1
-        args.eval_batch=1
-        args.gradient_accumulation_steps = 1
-        args.num_train_epochs=1
-        args.log_steps=100
-        args.eval_steps=100
-        args.save_steps=100
-
-    trainer = main(args)
-    train(trainer,args)
+    trainer = create_trainer(args)
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint is not None)
+    save_trained_model(trainer, args.output_dir)

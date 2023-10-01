@@ -1,10 +1,10 @@
 import os
 import argparse
 
-from utils import read_yaml, parse_additional_args
+from utils import read_yaml, parse_additional_args,parse_arguments,init_or_resume_from
 from training_datasets.dataset_utils import load_rm_dataset, load_sft_dataset
 from training_datasets.collators import RankingDataCollator, DialogueDataCollator
-from model_training.training_utils import get_tokenizer
+from model_training.training_utils import get_model_and_tokenizer
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
 def main(conf):
@@ -24,8 +24,7 @@ def display_data(data,collator,tokenizer,each_fn):
 
 "====== display sft"  
 def display_sft(config_ns):
-    tokenizer, eos_token= get_tokenizer(config_ns,TOKENIZER_SEPECIAL_TOKENS)
-    train, eval = load_sft_dataset(config_ns,eos_token)
+    train, eval = load_sft_dataset(config_ns,special_tokens["eos_token"])
 
     train_collate_fn = DialogueDataCollator(
         tokenizer,
@@ -67,7 +66,6 @@ def display_each_sft(item,tokenizer):
 "====== display rm"
 "====== display sft"  
 def display_rm(config_ns):
-    tokenizer, eos_token= get_tokenizer(config_ns,TOKENIZER_SEPECIAL_TOKENS)
     train, eval = load_rm_dataset(config_ns)
 
     train_collate_fn = RankingDataCollator(
@@ -95,18 +93,15 @@ def display_each_rm(item,tokenizer):
 
 
 if __name__ == "__main__":
-    config = {}
-    parser = argparse.ArgumentParser(description="Parse configuration")
-    parser.add_argument("--config_subset",type=str, help="Subset of the configs to use")
-
-    args, remaining = parser.parse_known_args()
-    subset = args.config_subset
-    conf = read_yaml('./configs/config.yaml')
-    config.update(conf[subset])
-    config.update(conf["common"])
-    config["subset"] = subset
-
-
+    config, remaining_args = parse_arguments()
     parser = parse_additional_args(config)
-    args = parser.parse_args(remaining)
+    args = parser.parse_args(remaining_args)
+
+    init_or_resume_from(args)
+
+    device_map = "auto"#"{"":0}"
+    assert "llama" in args.model_name.lower(), "Currently only llama model supported"
+    special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
+    tokenizer = get_model_and_tokenizer(device_map,args,special_tokens,only_tokenizer=True)
+
     main(args)

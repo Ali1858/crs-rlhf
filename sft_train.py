@@ -2,19 +2,21 @@
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_sft.py
 """ 
 import os
-import argparse
 from functools import partial
 
 import torch
 import evaluate
+from torch.utils.data import ConcatDataset
 from transformers import TrainingArguments
 from transformers.training_args import OptimizerNames
 
 from training_datasets.dataset_utils import load_sft_dataset
 from training_datasets.collators import DialogueDataCollator
 from model_training.trainers import SFTTrainer
-from model_training.training_utils import get_model, get_tokenizer
-from utils import read_yaml, parse_additional_args, print_yaml_config
+from model_training.training_utils import get_model_and_tokenizer
+from utils import (parse_additional_args, print_yaml_config, 
+                   parse_arguments, init_or_resume_from,
+                    debug_configurations, save_trained_model)
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
 
@@ -30,11 +32,22 @@ def preprocess_logits_for_metrics(logits, labels):
     return pred_ids
 
 
-def main(conf):
+def optuna_hp_space(trial):
+    return {
+        "num_train_epochs" :trial.suggest_categorical("num_train_epochs", [1,2,3]),
+        "gradient_accumulation_steps": trial.suggest_categorical("gradient_accumulation_steps", [8, 16, 32]),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
+        "lr_scheduler_type": trial.suggest_categorical("lr_scheduler_type", ["cosine","linear"]),
+        "warmup_steps": trial.suggest_categorical("warmup_steps", [30,50,100,300]),
+        "weight_decay": trial.suggest_float("weight_decay", 0.000001, 0.05, log=True),
+    }
+
+
+def create_trainer(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
     # needs to happen before model loading in case of stage 3 training
-    optimizer =  OptimizerNames.ADAMW_BNB if conf.int8_training else OptimizerNames.ADAMW_HF
+    optimizer =  OptimizerNames.ADAMW_HF
     accuracy = evaluate.load("accuracy")
     device_map = "auto"#"{"":0}"
 
@@ -65,9 +78,10 @@ def main(conf):
         report_to=conf.report_to,
     )
 
-    tokenizer, eos_token= get_tokenizer(conf,TOKENIZER_SEPECIAL_TOKENS)
-    train_ds , eval_ds = load_sft_dataset(conf,eos_token)
-    model = get_model(tokenizer, device=device_map,config=conf)
+    assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
+    special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
+    train_ds , eval_ds = load_sft_dataset(conf,special_tokens["eos_token"])
+    model, tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens)
     
     train_collate_fn = DialogueDataCollator(
         tokenizer,
@@ -102,7 +116,7 @@ def main(conf):
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
     
-    if not conf.debug:
+    if not conf.debug and not conf.optuna:
         import wandb        
         os.environ["WANDB_WATCH"] = "all"
         wandb_project_name = f"supervised-finetuning{wandb_suffix}"
@@ -114,69 +128,61 @@ def main(conf):
             save_code=True,
         )
 
+    model_init = None
+    if conf.optuna:
+        print(f'setting model to None for hyper parameter sweeping using optuna')
+        model=None
+        eval_ds_list = []
+        for k,v in eval_ds.items():
+            eval_ds_list.append(v)
+        eval_ds = ConcatDataset(eval_ds_list)
+
+        def model_init(trail):
+            model, _ = get_model_and_tokenizer(device_map,conf,special_tokens)
+            return model
+
     trainer = SFTTrainer(
-    model=model,
-    args=args,
-    train_collate_fn=train_collate_fn,
-    train_dataset=train_ds,
-    eval_dataset=eval_ds,
-    data_collator=eval_collate_fn,
-    tokenizer=tokenizer,
-    compute_metrics=partial(compute_accuracy, accuracy=accuracy),
-    preprocess_logits_for_metrics=preprocess_logits_for_metrics,)
+        model=model,
+        args=args,
+        train_collate_fn=train_collate_fn,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
+        data_collator=eval_collate_fn,
+        tokenizer=tokenizer,
+        compute_metrics=partial(compute_accuracy, accuracy=accuracy),
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+        model_init=model_init
+    )
+
     return trainer
 
-
-def train(trainer,conf):
-    trainer.train(resume_from_checkpoint=conf.resume_from_checkpoint is not None)
-    trainer.model.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
-    trainer.tokenizer.save_pretrained(os.path.join(conf.output_dir, "final_checkpoint/"))
-
+def compute_objective(metrics):
+    return metrics["eval_accuracy"]["accuracy"]
 
 if __name__ == "__main__":
-    config = {}
-    parser = argparse.ArgumentParser(description="Parse configuration")
-    parser.add_argument("--config_subset", type=str, help="Subset of the configs to use")
-    parser.add_argument("--name_suffix", type=str, default="", help="Suffix name while performing multiple experiment. Keep it  simple because by default wandb store configs of each train")
-
-    args, remaining = parser.parse_known_args()
-
-    config_subset = args.config_subset
-    conf = read_yaml('./configs/config.yaml')
-    config.update(conf["common"])
-    config.update(conf[config_subset])
-    config["name_suffix"] = args.name_suffix
-
-    for k,v in config.pop("peft_config_additional").items():
-        config["peft_config"][k]=v
-
-
+    config, remaining_args = parse_arguments()
     parser = parse_additional_args(config)
-    args = parser.parse_args(remaining)
+    args = parser.parse_args(remaining_args)
 
-
-    if args.checkpoint_name is not None:
-        if args.checkpoint_number is None:
-            args.checkpoint_number="final_checkpoint"
-        else:
-            args.checkpoint_number = args.checkpoint_number
-        args.resume_from_checkpoint = os.path.join(args.output_dir,args.checkpoint_name,args.checkpoint_number) 
-        print(f'{"==="*10} resuming from checkpoint {args.resume_from_checkpoint}')
+    init_or_resume_from(args)
 
     debug_tag = "_dbug" if args.debug else ""
     args.name = f"{args.name}{debug_tag}{args.name_suffix}"
-    args.output_dir = os.path.join(args.output_dir,args.name)
+    args.output_dir = os.path.join(args.output_dir, args.name)
 
+    debug_configurations(args)
 
-    if args.debug:
-        args.report_to="none"
-        args.train_batch=1
-        args.eval_batch=1
-        args.gradient_accumulation_steps = 1
-        args.num_train_epochs=1
-        args.log_steps=100
-        args.eval_steps=100
-        args.save_steps=100
-
-    trainer = main(args)
-    train(trainer,args)
+    trainer = create_trainer(args)
+    if args.optuna:
+        best_trial = trainer.hyperparameter_search(
+            direction="maximize",
+            backend="optuna",
+            hp_space=optuna_hp_space,
+            n_trials=20,
+            compute_objective=compute_objective,
+            )
+        print(best_trial)
+    else:
+        print(trainer.optimizer)
+        trainer.train(resume_from_checkpoint=args.resume_from_checkpoint is not None)
+        save_trained_model(trainer, args.output_dir)

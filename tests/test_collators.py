@@ -3,7 +3,7 @@ import argparse
 import json
 
 from training_datasets.collators import DialogueDataCollator, RankingDataCollator, AbsoluteScoreDataCollator
-from model_training.training_utils import get_tokenizer
+from model_training.training_utils import get_tokenizer, get_model_and_tokenizer
 from utils import read_yaml
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
@@ -15,14 +15,18 @@ class TestDialogueDataCollator(unittest.TestCase):
         config = {}
         self.maxDiff=None
         
-        conf = read_yaml('./configs/config.yaml')
+        conf = read_yaml('./config.yaml')
         config.update(conf["pre_sft"])
-        config.update(conf["common"])
+        config.update(conf["default"])
 
         # Create a Namespace object for config
         self.config_ns = argparse.Namespace(**config)
 
-        self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
+        device_map = "auto"#"{"":0}"
+        assert "llama" in self.config_ns.model_name.lower(), "Currently only llama model supported"
+        special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
+        self.tokenizer = get_model_and_tokenizer(device_map,self.config_ns,special_tokens,only_tokenizer=True)
+
         with open("tests/dummy_data.json", "r") as f:
             j = json.load(f)
             self.test_data = j["sft_test_data"]
@@ -81,18 +85,20 @@ class TestRankingDataCollator(unittest.TestCase):
         config = {}
         self.maxDiff=None
         
-        conf = read_yaml('./configs/config.yaml')
+        conf = read_yaml('./config.yaml')
         config.update(conf["rm"])
-        config.update(conf["common"])
+        config.update(conf["default"])
         config['debug'] = True
 
         # Create a Namespace object for config
         self.config_ns = argparse.Namespace(**config)
         self.config_ns.model_name = self.config_ns.base_model_name
 
-        # self.sanity_checks_rm(self.config_ns)
+        device_map = "auto"#"{"":0}"
+        assert "llama" in self.config_ns.model_name.lower(), "Currently only llama model supported"
+        special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
+        self.tokenizer = get_model_and_tokenizer(device_map,self.config_ns,special_tokens,only_tokenizer=True)
 
-        self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
         with open("tests/dummy_data.json", "r") as f:
             j = json.load(f)
             self.test_data = j["rm_test_data"]
@@ -135,16 +141,20 @@ class TestAbsoluteScoreDataCollator(unittest.TestCase):
         config = {}
         self.maxDiff=None
         
-        conf = read_yaml('./configs/config.yaml')
+        conf = read_yaml('./config.yaml')
         config.update(conf["rm"])
-        config.update(conf["common"])
+        config.update(conf["default"])
         config['debug'] = True
 
         # Create a Namespace object for config
         self.config_ns = argparse.Namespace(**config)
         self.config_ns.model_name = self.config_ns.base_model_name
 
-        self.tokenizer, eos_token= get_tokenizer(self.config_ns,TOKENIZER_SEPECIAL_TOKENS)
+        device_map = "auto"#"{"":0}"
+        assert "llama" in self.config_ns.model_name.lower(), "Currently only llama model supported"
+        special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
+        self.tokenizer = get_model_and_tokenizer(device_map,self.config_ns,special_tokens,only_tokenizer=True)
+
         with open("tests/dummy_data.json", "r") as f:
             j = json.load(f)
             self.test_data = j["abs_rm_test_data"]
