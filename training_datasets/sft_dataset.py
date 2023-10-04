@@ -324,10 +324,10 @@ class WebGPT(Dataset):
 """Rewritten from:
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/oasst_dataset.py#L23
 """
-def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,max_val_set=None,**kwargs):
+def get_oasst_sft(val_split,eos_token,lang,manual_seed=90,max_val_set=None,top_k=None,**kwargs):
     generator = Generator()
     generator.manual_seed(manual_seed)
-    threads_per_tree = load_oasst(mode="sft",lang=lang)
+    threads_per_tree = load_oasst(mode="sft",lang=lang,top_k=top_k)
     def process_thread(thread):
             # ensure roles are strictly alternating between prompter and assistant
             assert all(m.role == "prompter" for m in thread[0::2]) and all(m.role == "assistant" for m in thread[1::2])

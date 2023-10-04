@@ -16,4 +16,5 @@ CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  pre_sft --name_suffi
 
 CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  pre_sft --name_suffix _4bit_lr_1e5_bs_64_paged_optim
 
-CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  pre_sft --name_suffix _4bit_lr_1e5_bs_64_org_optim
+CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  sft --name_suffix _4bit_lr_1e5_bs_64_top_1_adam_torch
+CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _4bit_lr_1e5_bs_16_adam_torch

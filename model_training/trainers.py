@@ -137,24 +137,10 @@ class RMTrainer(Trainer):
     def compute_loss(self, model, inputs, return_logits=False):
         batch, cu_lens = inputs
 
-        l = []
-        current_bs, token_len = batch.input_ids.shape
-        org_bs = self.args.train_batch_size
-
-        # create mini batch if bs is >= 6 or token size > 1024
-        if token_len > 1024:
-            print(f'batch {current_bs} and {token_len}')
-            for i in range(0,current_bs,org_bs):
-                l.extend(model(
-                input_ids=batch["input_ids"][i:i+org_bs],
-                attention_mask=batch["attention_mask"][i:i+org_bs],
-                ).logits)
-            logits = torch.stack(l)
-        else:
-            logits = model(
-                input_ids=batch["input_ids"],
-                attention_mask=batch["attention_mask"],
-            ).logits
+        logits = model(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+        ).logits
 
         loss = self.loss_fct(logits, cu_lens)
 

@@ -1,9 +1,12 @@
 import os
 import argparse
+import numpy as np
 
 import torch
-from transformers import TrainingArguments
+from torch.utils.data import ConcatDataset
+from transformers import TrainingArguments, EarlyStoppingCallback
 from transformers.training_args import OptimizerNames
+import wandb
 
 from training_datasets.dataset_utils import load_rm_dataset
 from training_datasets.collators import RankingDataCollator, AbsoluteScoreDataCollator
@@ -15,12 +18,35 @@ from utils import (parse_additional_args, print_yaml_config,
 from constants import TOKENIZER_SEPECIAL_TOKENS
 
 
+def ranking_reward_accuracy(eval_pred):
+    logits = eval_pred.predictions
+    labels = eval_pred.label_ids
+    pos_scores, neg_scores = [], []
+    for b_logits, b_labels in zip(logits, labels):
+        b_labels = b_labels[b_labels != -100]
+        b_logits = b_logits[b_logits != -100]
+        for i in np.unique(b_labels):
+            logits_batch = b_logits[b_labels == i]
+            pos_scores.append(logits_batch[0])
+            neg_scores.append(logits_batch[-1])
+    pos_scores = np.array(pos_scores).reshape(-1, 1)
+    neg_scores = np.array(neg_scores).reshape(-1, 1)
+
+    metrics = {
+        "pos_score": np.mean(pos_scores),
+        "neg_score": np.mean(neg_scores),
+        "score_diff": np.mean(pos_scores - neg_scores),
+        "accuracy": np.mean(pos_scores > neg_scores),
+    }
+    return metrics
+
+
 def create_trainer(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
 
     # needs to happen before model loading in case of stage 3 training
-    optimizer =  OptimizerNames.ADAMW_BNB
+    optimizer =  OptimizerNames.ADAMW_TORCH
     device_map = "auto"#"{"":0}"
 
     args = TrainingArguments(
@@ -60,6 +86,7 @@ def create_trainer(conf):
     # metrics,preprocess_function = get_sft_metrics(conf.metrics)
     
     if conf.is_abs_rm:
+        metrics = None
         Trainer = AbsRMTrainer
         collate_fn = AbsoluteScoreDataCollator(
             tokenizer,
@@ -67,6 +94,7 @@ def create_trainer(conf):
             pad_to_multiple_of=16,
         )
     else:
+        metrics = ranking_reward_accuracy
         Trainer = RMTrainer
         collate_fn = RankingDataCollator(
             tokenizer,
@@ -84,33 +112,38 @@ def create_trainer(conf):
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
 
-    if not conf.debug:
-        import wandb
-        resume = None
-        if conf.checkpoint_name:
-            resume = conf.checkpoint_name +'_'+ conf.checkpoint_number
+    os.environ["WANDB_WATCH"] = "all"
+    wandb_project_name = f"reward-model{wandb_suffix}"
+    wandb.init(
+        project=wandb_project_name,
+        entity=None,
+        name=conf.name,
+        config=conf,
+        save_code=True,
+    )
 
-        os.environ["WANDB_WATCH"] = "all"
-        wandb_project_name = f"reward-model{wandb_suffix}"
-        wandb.init(
-            project=wandb_project_name,
-            entity=None,
-            resume=resume,
-            name=conf.name,
-            config=conf,
-            save_code=True,
-
-        )
+    callbacks = None
+    if conf.early_stopping:
+        print(f'{"==="*10}Concating the eval dataset and setting EarlyStopping callback')
+        args.metric_for_best_model = 'eval_accuracy'
+        args.load_best_model_at_end =True
+        callbacks = [EarlyStoppingCallback(early_stopping_patience = 3,early_stopping_threshold=0.001)]
+        eval_ds_list = []
+        for k,v in eval_ds.items():
+            eval_ds_list.append(v)
+        eval_ds = ConcatDataset(eval_ds_list)
 
     trainer = Trainer(
-    model=model,
-    args=args,
-    train_collate_fn=collate_fn,
-    train_dataset=train_ds,
-    eval_dataset=eval_ds,
-    data_collator=collate_fn,
-    tokenizer=tokenizer,
-    # compute_metrics=partial(compute_metrics, metrics=metrics, preprocess_fns=preprocess_function))
+        model=model,
+        args=args,
+        train_collate_fn=collate_fn,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
+        data_collator=collate_fn,
+        tokenizer=tokenizer,
+        compute_metrics=metrics,
+        callbacks=callbacks
+
     )
     return trainer
 

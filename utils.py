@@ -41,7 +41,7 @@ def init_or_resume_from(args):
         print(f'{"==="*10} resuming from checkpoint {args.resume_from_checkpoint}')
 
     if args.adpater_name is not None:
-        args.adpater_path = os.path.join(args.output_dir,args.adpater_name,'final_checkpoint')
+        args.adpater_path = os.path.join(args.output_dir,args.adpater_name,args.adapter_number)
         args.merged_adapter_path = os.path.join(args.output_dir,args.adpater_name,'merged')
 
 

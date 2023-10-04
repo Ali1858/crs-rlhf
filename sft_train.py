@@ -7,8 +7,9 @@ from functools import partial
 import torch
 import evaluate
 from torch.utils.data import ConcatDataset
-from transformers import TrainingArguments
+from transformers import TrainingArguments, EarlyStoppingCallback
 from transformers.training_args import OptimizerNames
+import wandb        
 
 from training_datasets.dataset_utils import load_sft_dataset
 from training_datasets.collators import DialogueDataCollator
@@ -24,7 +25,7 @@ def compute_accuracy(eval_pred, accuracy):
     preds, labels = eval_pred
     mask = labels > 0
     preds, labels = preds[mask], labels[mask]
-    return {"accuracy":accuracy.compute(predictions=preds, references=labels)}
+    return accuracy.compute(predictions=preds, references=labels)
 
 
 def preprocess_logits_for_metrics(logits, labels):
@@ -32,22 +33,11 @@ def preprocess_logits_for_metrics(logits, labels):
     return pred_ids
 
 
-def optuna_hp_space(trial):
-    return {
-        "num_train_epochs" :trial.suggest_categorical("num_train_epochs", [1,2,3]),
-        "gradient_accumulation_steps": trial.suggest_categorical("gradient_accumulation_steps", [8, 16, 32]),
-        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "lr_scheduler_type": trial.suggest_categorical("lr_scheduler_type", ["cosine","linear"]),
-        "warmup_steps": trial.suggest_categorical("warmup_steps", [30,50,100,300]),
-        "weight_decay": trial.suggest_float("weight_decay", 0.000001, 0.05, log=True),
-    }
-
-
 def create_trainer(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
     # needs to happen before model loading in case of stage 3 training
-    optimizer =  OptimizerNames.ADAMW_HF
+    optimizer =  OptimizerNames.ADAMW_TORCH
     accuracy = evaluate.load("accuracy")
     device_map = "auto"#"{"":0}"
 
@@ -116,30 +106,26 @@ def create_trainer(conf):
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
     
-    if not conf.debug and not conf.optuna:
-        import wandb        
-        os.environ["WANDB_WATCH"] = "all"
-        wandb_project_name = f"supervised-finetuning{wandb_suffix}"
-        wandb.init(
-            project=wandb_project_name,
-            entity=None,
-            name=conf.name,
-            config=conf,
-            save_code=True,
-        )
+    os.environ["WANDB_WATCH"] = "all"
+    wandb_project_name = f"supervised-finetuning{wandb_suffix}"
+    wandb.init(
+        project=wandb_project_name,
+        entity=None,
+        name=conf.name,
+        config=conf,
+        save_code=True,
+    )
 
-    model_init = None
-    if conf.optuna:
-        print(f'setting model to None for hyper parameter sweeping using optuna')
-        model=None
+    callbacks = None
+    if conf.early_stopping:
+        print(f'{"==="*10}Concating the eval dataset and setting EarlyStopping callback')
+        args.metric_for_best_model = 'eval_accuracy'
+        args.load_best_model_at_end =True
+        callbacks = [EarlyStoppingCallback(early_stopping_patience = 3,early_stopping_threshold=0.001)]
         eval_ds_list = []
         for k,v in eval_ds.items():
             eval_ds_list.append(v)
         eval_ds = ConcatDataset(eval_ds_list)
-
-        def model_init(trail):
-            model, _ = get_model_and_tokenizer(device_map,conf,special_tokens)
-            return model
 
     trainer = SFTTrainer(
         model=model,
@@ -151,13 +137,11 @@ def create_trainer(conf):
         tokenizer=tokenizer,
         compute_metrics=partial(compute_accuracy, accuracy=accuracy),
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-        model_init=model_init
+        callbacks=callbacks
     )
 
     return trainer
 
-def compute_objective(metrics):
-    return metrics["eval_accuracy"]["accuracy"]
 
 if __name__ == "__main__":
     config, remaining_args = parse_arguments()
@@ -173,16 +157,5 @@ if __name__ == "__main__":
     debug_configurations(args)
 
     trainer = create_trainer(args)
-    if args.optuna:
-        best_trial = trainer.hyperparameter_search(
-            direction="maximize",
-            backend="optuna",
-            hp_space=optuna_hp_space,
-            n_trials=20,
-            compute_objective=compute_objective,
-            )
-        print(best_trial)
-    else:
-        print(trainer.optimizer)
-        trainer.train(resume_from_checkpoint=args.resume_from_checkpoint is not None)
-        save_trained_model(trainer, args.output_dir)
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint is not None)
+    save_trained_model(trainer, args.output_dir)

@@ -16,7 +16,7 @@ from training_datasets.collators import DialogueDataCollator, RankingDataCollato
 
 accuracy = evaluate.load("accuracy")
 
-def sft_eval(inputs, model,print_pred,tokenizer):
+def sft_eval(inputs, model,tokenizer):
     targets = inputs.pop("targets")
     labels_mask = inputs.pop("label_masks")
     
@@ -32,16 +32,6 @@ def sft_eval(inputs, model,print_pred,tokenizer):
     pred_ids = torch.argmax(logits, dim=-1)
     mask = targets > 0
     preds, labels = pred_ids[mask], targets[mask]
-
-    if print_pred:
-        print(f'{"***"*20}')
-        print(f'{"***"*20}')
-        print(f'{"***"*20}')
-
-        print(f'{"==="*10} input:\n{tokenizer.decode(inputs["input_ids"][0])}')
-        print(f'{"==="*10} prediction:\n{tokenizer.decode(preds)}')
-        print(f'{"==="*10} target:\n{tokenizer.decode(labels)}')
-
     return accuracy.compute(predictions=preds, references=labels)["accuracy"]
 
 
@@ -49,6 +39,8 @@ def main(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
     
+    # conf.model_name = "andreaskoepf/llama2-7b-oasst-baseline"
+    # conf.init_from_adapter = None
     device_map = "auto"#"{"":0}"
     assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
     special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
@@ -70,9 +62,8 @@ def main(conf):
         accs = []
         print(f"{'==='*10} Evaluating the {ds_name} ....")
         for idx in tqdm(range(len(ds))):
-            print_pred = idx%300==0
-            accs.append(sft_eval(eval_collate_fn([ds[idx]]),model,print_pred,tokenizer))
-        accs_report[ds_name] = np.mean(accs)
+            accs.append(sft_eval(eval_collate_fn([ds[idx]]),model,tokenizer))
+        accs_report[ds_name] = np.nanmean(accs)
         
     for ds_name,acc in accs_report.items():
         print(f'{ds_name}-->{acc}')
@@ -91,20 +82,33 @@ if __name__ == "__main__":
     debug_configurations(args)
     main(args)
 
-#     vicuna-->nan
-# dolly-->0.4526630194201647
-# alpaca-->0.6733093753343026
-# math_instruction-->0.675246921486663
-# oasst_export-->0.3116285181198321
 
 # vicuna-->nan
 # dolly-->0.34272905502755796
 # alpaca-->0.48230987207766096
 # math_instruction-->0.5356312181236564
 # oasst_export-->0.4333112373623429
+#Adam hf final checkpoint
 
-# vicuna-->0.726941048289897
-# dolly-->0.5599764270552907
-# alpaca-->0.6872182185738254
-# math_instruction-->0.6613969404339362
-# oasst_export-->0.6695340935405805
+# vicuna-->0.7936980995746512
+# dolly-->0.656494979677486
+# alpaca-->0.8416825592196571
+# math_instruction-->0.803523236731632
+# oasst_export-->0.6670421535290308
+
+# oasst sft top_1_adam_torch
+# vicuna-->0.7945419982194751
+# dolly-->0.6451266721597528
+# alpaca-->0.8189582698242566
+# math_instruction-->0.7943336305230411
+# oasst_export-->0.6742018840478846
+# oasst_export_top_1-->0.7050264077495915
+
+
+# oasst sft  adam_torch
+# vicuna-->0.7950413907286692
+# dolly-->0.6583285087548654
+# alpaca-->0.8170551377448529
+# math_instruction-->0.7875307433896538
+# oasst_export-->0.6776304796980651
+# oasst_export_top_1-->0.7074105775829883
