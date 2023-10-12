@@ -40,12 +40,16 @@ def main(conf):
     print_yaml_config(conf)
     
     # conf.model_name = "andreaskoepf/llama2-7b-oasst-baseline"
+    # conf.model_name = "OpenAssistant/llama2-13b-orca-8k-3319"
     # conf.init_from_adapter = None
-    device_map = "auto"#"{"":0}"
+    device_map = {"":0}#""auto"#"
     assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
     special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
     model, tokenizer = load_for_inference(device_map,conf,special_tokens,conf.model_name,False)
     _ , eval_ds = load_sft_dataset(conf,special_tokens["eos_token"])
+
+    if "val_max_length" not in conf.collator:
+        conf.collator["val_max_length"] = conf.collator["max_length"]
 
     eval_collate_fn = DialogueDataCollator(
         tokenizer,
@@ -88,6 +92,16 @@ if __name__ == "__main__":
 # alpaca-->0.48230987207766096
 # math_instruction-->0.5356312181236564
 # oasst_export-->0.4333112373623429
+
+#  LLama-2-7b_pre_sft_warm_20
+# vicuna-->0.6224225885998218
+# dolly-->0.4067806925645199
+# alpaca-->0.6545394394558457
+# math_instruction-->0.6824120388501704
+# oasst_export-->0.31375791956511395
+# webgpt-->0.42343277258045914
+
+
 #Adam hf final checkpoint
 
 # vicuna-->0.7936980995746512
@@ -112,3 +126,30 @@ if __name__ == "__main__":
 # math_instruction-->0.7875307433896538
 # oasst_export-->0.6776304796980651
 # oasst_export_top_1-->0.7074105775829883
+
+
+# /home/alikhan/crs-rlhf/output/LLama-2-7b_full_sft_4bit_bs_64
+# vicuna-->0.7838980973557769
+# dolly-->0.6681784825066016
+# alpaca-->0.8352917974194295
+# math_instruction-->0.8093569004917444
+# oasst_export-->0.6769726265223734
+# webgpt-->0.5590397039360844
+
+# LLama-2-7b_full_sft_4bit_bs_64_minus_webgpt_1200/checkpoint-900
+# vicuna-->0.7929086776614885
+# dolly-->0.6525359296215429
+# alpaca-->0.8278491193989356
+# math_instruction-->0.7884365469256344
+# oasst_export-->0.6747444637733873
+# webgpt-->0.561079285670352
+
+# LLama-2-7b_full_sft_4bit_bs_64_minus_webgpt/checkpoint-600
+# vicuna-->0.7984208320909987
+# dolly-->0.6589274932416096
+# alpaca-->0.8271362522941084
+# math_instruction-->0.7915342628285679
+# oasst_export-->0.6731613688171154
+# webgpt-->0.5617034341204475
+
+#

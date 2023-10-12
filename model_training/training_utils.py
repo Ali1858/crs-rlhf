@@ -6,6 +6,7 @@ import transformers
 from transformers import BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from peft import PeftConfig, PeftModel
+from peft.tuners.lora import LoraLayer
 
 from constants import QA_SPECIAL_TOKENS,CACHE_DIR,DTYPES
 
@@ -48,9 +49,9 @@ def resize_embeddings(model,tokenizer,pad_vocab_size_to_multiple_of):
 
 def get_peft_config(reward_model):
         base_config = {
-            'r': 16,
-            'lora_alpha': 32,
-            'lora_dropout': 0.05,
+            'r': 64,
+            'lora_alpha': 16,
+            'lora_dropout': 0.1,
             'bias': 'none',
             'inference_mode': False,
             'target_modules': 'all'
@@ -138,6 +139,17 @@ def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multi
     else:
         model = get_peft_model(model, lora_config)
 
+    for name, module in model.named_modules():
+        if isinstance(module, LoraLayer):
+            if config.dtype in ["bf16","bfloat16"]:
+                module = module.to(torch.bfloat16)
+        if 'norm' in name:
+            module = module.to(torch.float32)
+        if 'lm_head' in name or 'embed_tokens' in name:
+            if hasattr(module, 'weight'):
+                if config.dtype in ["bf16","bfloat16"] and module.weight.dtype == torch.float32:
+                    module = module.to(torch.bfloat16)
+
     if config.debug:
         print(f'=== model:/n{model}/n===')
 
@@ -146,7 +158,7 @@ def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multi
 
 
 def merge_and_save_peft_model(conf):
-    if not os.path.exists(conf.merged_adapter_path):
+    if conf.merged_adapter_path and not os.path.exists(conf.merged_adapter_path):
         print(f"{'==='*10} Initiating the model merging process")
         peft_config = PeftConfig.from_pretrained(conf.adpater_path)
 
@@ -177,7 +189,7 @@ def merge_and_save_peft_model(conf):
         model.save_pretrained(conf.merged_adapter_path)
         tokenizer.save_pretrained(conf.merged_adapter_path)
         print(f"{'==='*10} The peft model and tokenizer are saved at location {conf.merged_adapter_path}")
-    else:
+    elif conf.merged_adapter_path:
         print(f"{'==='*10} The peft model is already saved at location {conf.merged_adapter_path}")
 
 

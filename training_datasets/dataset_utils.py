@@ -208,6 +208,11 @@ def load_sft_dataset(conf,eos_token):
             train_ds = Subset(train_ds, subset_indices)
 
         train_datasets.append(train_ds)
+        if ds_name == 'oasst_export' and dataset_kwargs.get("oasst_weight"):
+            oasst_weight=dataset_kwargs["oasst_weight"]
+            print(f'{"==="*10} Oversampling the oasst export {oasst_weight-1} more time ....')
+            for _ in range(oasst_weight - 1):
+                train_datasets.append(train_ds)
         evals[ds_name] = val_ds
     train = ConcatDataset(train_datasets)
 

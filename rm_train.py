@@ -52,8 +52,10 @@ def create_trainer(conf):
     args = TrainingArguments(
         output_dir=conf.output_dir,
         num_train_epochs=conf.num_train_epochs,
+        max_steps=conf.max_steps,
         lr_scheduler_type=conf.lr_scheduler_type,
-        warmup_steps=conf.warmup_steps,
+        warmup_ratio=conf.warmup_ratio,
+        max_grad_norm=conf.max_grad_norm,
         learning_rate=float(conf.lr),
         optim=optimizer,
         fp16=conf.dtype in ["fp16", "float16"],
@@ -62,9 +64,9 @@ def create_trainer(conf):
         gradient_accumulation_steps=conf.gradient_accumulation_steps,
         per_device_train_batch_size=conf.train_batch,
         per_device_eval_batch_size=conf.eval_batch,
-        adam_beta1=conf.adam_beta1,
+        # adam_beta1=conf.adam_beta1,
         adam_beta2=conf.adam_beta2,
-        adam_epsilon=float(conf.adam_epsilon),
+        # adam_epsilon=float(conf.adam_epsilon),
         weight_decay=conf.weight_decay,
         logging_steps=conf.log_steps,
         evaluation_strategy="steps",
@@ -76,7 +78,8 @@ def create_trainer(conf):
         report_to=conf.report_to,
     )
 
-    conf.model_name = conf.merged_adapter_path
+    conf.model_name = conf.merged_adapter_path if conf.merged_adapter_path else conf.base_model_name
+    assert conf.model_name, "Model name can't be null"
     assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
     special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
     merge_and_save_peft_model(conf)

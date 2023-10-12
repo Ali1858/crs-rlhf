@@ -226,7 +226,7 @@ class MathInstruction(Dataset):
 
 "Taken from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/custom_datasets/qa_datasets.py#L426"
 class AlpacaBaseDataset(Dataset):
-    def __init__(self, cache_dir, eos_token, dataset_name="code_alpaca",**kwargs):
+    def __init__(self, cache_dir, eos_token, dataset_name="alpaca",**kwargs):
         super().__init__()
         if dataset_name == "alpaca":
             dataset = load_dataset("yahma/alpaca-cleaned", cache_dir=cache_dir)

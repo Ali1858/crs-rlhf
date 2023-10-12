@@ -7,21 +7,22 @@ default:
   output_dir: output
   model_name: &sft_model meta-llama/Llama-2-7b-hf
   pre_sft: &pre_sft_name LLama-2-7b_pre_sft
-  oasst_sft: &sft_adapter_name LLama-2-7b_oasst_sft
-  ranking_rm: &rm_ranking_name LLama-2-7b_ranking_reward
+  oasst_sft: &sft_adapter_name LLama-2-7b_ours_oasst_sft
+  ranking_rm: &rm_ranking_name LLama-2-7b_ours_oasst_sft_ranking_reward
   gradient_checkpointing: true
-  adam_beta1: 0.9
-  adam_beta2: 0.95
-  adam_epsilon: 1e-12
-  log_steps: 1
+  adam_beta1:
+  adam_beta2: 0.999
+  adam_epsilon:
+  log_steps: 10
   eval_steps: 100
   save_steps: 100
   checkpoint_number: final_checkpoint
   adapter_number: final_checkpoint
   lr_scheduler_type: cosine
-  lr: 1e-5
-  warmup_steps: 50
-  weight_decay: 0.000001
+  lr: 1e-4
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 0.3
   train_batch: 4
   eval_batch: 4
   num_train_epochs: 1
@@ -34,6 +35,8 @@ default:
   init_from_adapter:
   early_stopping: false
   eval_accumulation_steps: 
+  max_steps: 0
+  merged_adapter_path:
   collator:
     max_length: 2048
     random_offset_probability: 0.5
@@ -47,15 +50,15 @@ pre_sft:
   name: *pre_sft_name
   train_batch: 4
   eval_batch: 4
-  num_train_epochs: 2
-  gradient_accumulation_steps: 8
+  num_train_epochs: 1
+  gradient_accumulation_steps: 16
   eval_steps: 100
   save_steps: 300
-  early_stopping: true
+  early_stopping: false
   dataset:
-    vicuna:
-      val_split: 0.05
-      max_val_set: 800
+    # vicuna:
+    #   val_split: 0.05
+    #   max_val_set: 800
     dolly:
       val_split: 0.05
       max_val_set: 300
@@ -65,23 +68,19 @@ pre_sft:
     math_instruction:
       val_split: 0.05
       max_val_set: 200
-    webgpt:
-      val_split: 0.05
-      max_val_set: 1000
-    oasst_export:
-        val_split: 0.05
-        max_val_set: 
-        lang: bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
+    # webgpt:
+    #   val_split: 0.05
+    #   max_val_set: 1000
 
 sft:
   name: *sft_adapter_name
   train_batch: 4
   eval_batch: 4
-  num_train_epochs: 3
+  num_train_epochs: 2
   gradient_accumulation_steps: 16
-  eval_steps: 25
+  eval_steps: 50
   save_steps: 100
-  init_from_adapter: LLama-2-7b_pre_sft_4bit_lr_1e5_bs_64_adam_hf
+  init_from_adapter: LLama-2-7b_pre_sft_lr_1e4_cosine_bs64_qlora_default
   dataset:
     oasst_export:
         val_split: 0.05
@@ -92,12 +91,12 @@ sft:
 rm:
   name: *rm_ranking_name
   base_model_name: *sft_model
-  adpater_name: LLama-2-7b_oasst_sft_4bit_lr_1e5_bs_64_top_1_adam_torch
+  adpater_name: LLama-2-7b_ours_oasst_sft_ep_2_lr_1e4_cosine_bs64_qlora_default
   train_batch: 1
   eval_batch: 1
   num_train_epochs: 1
   gradient_accumulation_steps: 16
-  eval_steps: 25
+  eval_steps: 100
   save_steps: 200
   metrics:
     - accuracy
@@ -109,8 +108,8 @@ rm:
 
 sft_eval:
   name: LLama-2-7b_eval
-  init_from_adapter: LLama-2-7b_oasst_sft_4bit_lr_1e5_bs_64_top_1_adam_torch
-  # adapter_number: checkpoint-300
+  init_from_adapter: LLama-2-7b_pre_sft_warm_20
+  # adapter_number: checkpoint-600
   dataset:
     vicuna:
       val_split: 0.05
@@ -129,3 +128,13 @@ sft_eval:
         max_val_set: 
         lang: en,bg,ca,cs,da,de,en,es,fr,hr,hu,it,nl,pl,pt,ro,ru,sl,sr,sv,uk
         # top_k: 1
+    webgpt:
+      val_split: 0.05
+      max_val_set: 1000
+  collator:
+    max_length: 2048
+    random_offset_probability: 0.5
+    label_masking: true
+    samples_mixing: False
+    use_system_prefix: false
+    system_prefix: 
