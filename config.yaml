@@ -8,7 +8,7 @@ default:
   model_name: &sft_model meta-llama/Llama-2-7b-hf
   pre_sft: &pre_sft_name LLama-2-7b_pre_sft
   oasst_sft: &sft_adapter_name LLama-2-7b_ours_oasst_sft
-  ranking_rm: &rm_ranking_name LLama-2-7b_ours_oasst_sft_ranking_reward
+  ranking_rm: &rm_ranking_name LLama-2-7b_ours_oasst_sft_reward
   gradient_checkpointing: true
   adam_beta1:
   adam_beta2: 0.999
@@ -91,9 +91,10 @@ sft:
 rm:
   name: *rm_ranking_name
   base_model_name: *sft_model
+  is_abs_rm: true
   adpater_name: LLama-2-7b_ours_oasst_sft_ep_2_lr_1e4_cosine_bs64_qlora_default
-  train_batch: 1
-  eval_batch: 1
+  train_batch: 4 #1
+  eval_batch: 4 #1
   num_train_epochs: 1
   gradient_accumulation_steps: 16
   eval_steps: 100
@@ -102,9 +103,14 @@ rm:
     - accuracy
   max_replies: 4
   dataset:
-    oasst_export:
+    # oasst_export:
+    #   val_split: 0.05
+    #   lang: "en,es,de,fr"
+    oasst_export_abs:
       val_split: 0.05
       lang: "en,es,de,fr"
+      max_val_set: 100
+
 
 sft_eval:
   name: LLama-2-7b_eval
@@ -138,3 +144,47 @@ sft_eval:
     samples_mixing: False
     use_system_prefix: false
     system_prefix: 
+
+  
+eval_abs_rm:
+  name: *rm_ranking_name
+  base_model_name: *sft_model
+  is_abs_rm: true
+  adpater_name: LLama-2-7b_ours_oasst_sft_ep_2_lr_1e4_cosine_bs64_qlora_default
+  train_batch: 4 #1
+  eval_batch: 4 #1
+  num_train_epochs: 1
+  gradient_accumulation_steps: 16
+  eval_steps: 100
+  save_steps: 200
+  metrics:
+    - accuracy
+  max_replies: 4
+  dataset:
+    # oasst_export:
+    #   val_split: 0.05
+    #   lang: "en,es,de,fr"
+    oasst_export_abs:
+      val_split: 0.05
+      lang: "en,es,de,fr"
+      max_val_set: 100
+
+
+eval_ranking_rm:
+  name: *rm_ranking_name
+  base_model_name: *sft_model
+  is_abs_rm: false
+  adpater_name: LLama-2-7b_ours_oasst_sft_ep_2_lr_1e4_cosine_bs64_qlora_default
+  train_batch: 4 #1
+  eval_batch: 4 #1
+  num_train_epochs: 1
+  gradient_accumulation_steps: 16
+  eval_steps: 100
+  save_steps: 200
+  metrics:
+    - accuracy
+  max_replies: 4
+  dataset:
+    oasst_export:
+      val_split: 0.05
+      lang: "en,es,de,fr"

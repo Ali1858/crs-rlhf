@@ -194,7 +194,7 @@ def merge_and_save_peft_model(conf):
 
 
 def load_for_inference(device,conf,special_tokens,base_model="meta-llama/Llama-2-7b-hf",reward_model=False):
-    print(f'loading {conf.model_name} model')
+    print(f'{"==="*10}loading {conf.model_name} model')
     peft_model_id = conf.init_from_adapter
 
     base_model = load_base_model(device, conf, reward_model)
@@ -204,6 +204,8 @@ def load_for_inference(device,conf,special_tokens,base_model="meta-llama/Llama-2
     if peft_model_id is None:
         print(f"{'==='*10}Loading only base model {conf.model_name}. No lora adapter found")
         return base_model,tokenizer
+    print(f"{'==='*10}Now Loading Peft model {conf.init_from_adapter}.")
+
 
     resize_embeddings(base_model,tokenizer,16)
     model = PeftModel.from_pretrained(base_model, peft_model_id, is_trainable=False)

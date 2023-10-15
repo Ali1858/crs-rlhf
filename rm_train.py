@@ -1,6 +1,6 @@
 import os
-import argparse
 import numpy as np
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 import torch
 from torch.utils.data import ConcatDataset
@@ -41,13 +41,22 @@ def ranking_reward_accuracy(eval_pred):
     return metrics
 
 
+def abs_reward_metrics(eval_pred):
+    predictions, labels = eval_pred
+    predictions = predictions.squeeze()
+    return {
+        'mse': mean_squared_error(labels, predictions),
+        'mae': mean_absolute_error(labels, predictions)
+    }
+
+
 def create_trainer(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
 
     # needs to happen before model loading in case of stage 3 training
     optimizer =  OptimizerNames.ADAMW_TORCH
-    device_map = "auto"#"{"":0}"
+    device_map = "auto" #{"":0} #
 
     args = TrainingArguments(
         output_dir=conf.output_dir,
@@ -85,11 +94,8 @@ def create_trainer(conf):
     merge_and_save_peft_model(conf)
     train_ds , eval_ds = load_rm_dataset(conf)
     model,tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens, need_embedding_resize=False,reward_model=True)
-
-    # metrics,preprocess_function = get_sft_metrics(conf.metrics)
-    
     if conf.is_abs_rm:
-        metrics = None
+        metrics = abs_reward_metrics
         Trainer = AbsRMTrainer
         collate_fn = AbsoluteScoreDataCollator(
             tokenizer,
@@ -158,7 +164,8 @@ if __name__ == "__main__":
     init_or_resume_from(args)
 
     debug_tag = "_dbug" if args.debug else ""
-    args.name = f"{args.name}{debug_tag}{args.name_suffix}"
+    reward_type = "_abs" if args.is_abs_rm else "_ranking"
+    args.name = f"{args.name}{reward_type}{debug_tag}{args.name_suffix}"
     args.output_dir = os.path.join(args.output_dir, args.name)
 
     debug_configurations(args)

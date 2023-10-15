@@ -194,15 +194,21 @@ class RMDataset(Dataset):
 
 
 class AbsoluteRMDataset(Dataset):
-    def __init__(self, data: list):
+    def __init__(self, dataset: list):
         super().__init__()
         self.data = []
-        for row in data:
+        count = 0
+        #TODO: Add function to calculate mean of all Likert score
+        for row in dataset:
             message,replies = row
             for r in replies:
                 reply_text,labels = r
                 reward_score = labels["quality"]
-                self.data.append((message,reply_text,reward_score))
+                if reward_score:
+                    self.data.append((message,reply_text,reward_score))
+                else:
+                    count +=1
+        print(f'{"==="*10} total {count} has None type quality label')
 
     def __len__(self):
         return len(self.data)
@@ -239,11 +245,11 @@ def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
     return train,val
 
 
-def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
+def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,top_k=None,**kwargs):
     desired_labels = ["violence","creativity","helpfulness","humor","toxicity","quality"]
     generator = Generator()
     generator.manual_seed(manual_seed)
-    threads_per_tree = load_oasst(mode="rm",lang=lang)
+    threads_per_tree = load_oasst(mode="rm",top_k=top_k,lang=lang)
 
     def process_thread(thread):
         prefix = [m.text for m in thread]
@@ -261,8 +267,8 @@ def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
     trees = ListDataset(threads_per_tree,)
     splits = random_split(trees, lengths=[1.0 - val_split, val_split], generator=generator)
 
-    def flatten(ds: ListDataset) -> RMDataset:
-        return RMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
+    def flatten(ds: ListDataset) -> AbsoluteRMDataset:
+        return AbsoluteRMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
 
     train = flatten(splits[0])
     val = flatten(splits[1])

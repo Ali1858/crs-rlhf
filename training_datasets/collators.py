@@ -326,7 +326,7 @@ class AbsoluteScoreDataCollator:
             return_tensors="pt",
         )
 
-        batch["labels"] = scores
+        batch["labels"] = torch.tensor(scores,dtype=float)
 
         if "token_type_ids" in batch:
             batch.pop("token_type_ids")

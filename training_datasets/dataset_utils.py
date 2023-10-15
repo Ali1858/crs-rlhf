@@ -193,7 +193,6 @@ def load_sft_dataset(conf,eos_token):
         conf.dataset = {key:conf.dataset[key]}
 
     for ds_name, dataset_kwargs in conf.dataset.items():
-        dataset_kwargs["max_val_set"] = int(dataset_kwargs["max_val_set"]*conf.hpt_data_frac) if conf.hpt_data_frac else dataset_kwargs["max_val_set"]
         print(f'===loading the {ds_name} dataset===\n')
         ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,eos_token=eos_token,**dataset_kwargs)
         if type(ds) == tuple:
@@ -202,10 +201,6 @@ def load_sft_dataset(conf,eos_token):
             train_ds,val_ds = train_val_dataset(ds,name=ds_name,
                                                 val_split=dataset_kwargs["val_split"],
                                                 max_val_set=dataset_kwargs["max_val_set"])
-        if conf.hpt_data_frac:
-            hpt_size = int(len(train_ds)*conf.hpt_data_frac)
-            subset_indices = np.random.choice(len(train_ds), size=hpt_size, replace=False)
-            train_ds = Subset(train_ds, subset_indices)
 
         train_datasets.append(train_ds)
         if ds_name == 'oasst_export' and dataset_kwargs.get("oasst_weight"):
@@ -217,15 +212,9 @@ def load_sft_dataset(conf,eos_token):
     train = ConcatDataset(train_datasets)
 
     if conf.debug:
-        print("Using only n numbers rows for debuging")
-        subset_indices = range(conf.debug_set)
-        train = Subset(train, subset_indices)
-        for k,v in evals.items():
-            evals[k] = Subset(v, subset_indices)
+        train, evals = debug_subset_data(conf, train, evals)
 
-    print(f'{"==="*10} Total training dataset size is {len(train)}...')
-    for k,v in evals.items():
-        print(f'\t{"==="*10} Validation size for {k} dataset size is {len(v)}...')
+    print_dataset_sizes(train, evals)
 
     return train,evals
 
@@ -240,6 +229,46 @@ def load_rm_dataset(conf):
                         "webgpt": get_webgpt_rm,
                         "oasst_export_abs": get_oasst_abs_rm
                         }
+    train, evals = load_and_process_datasets(conf, dataset_func_mapping)
+
+    if conf.debug:
+        train, evals = debug_subset_data(conf, train, evals)
+
+    print_dataset_sizes(train, evals)
+
+    return train,evals
+
+def load_rl_dataset(conf):
+    from training_datasets.rl_dataset import get_oasst_rl
+    dataset_func_mapping  = {
+                        "oasst_export":get_oasst_rl,
+                        # "webgpt": get_webgpt_rm,
+                        }
+    train, evals = load_and_process_datasets(conf, dataset_func_mapping)
+
+    if conf.debug:
+        train, evals = debug_subset_data(conf, train, evals)
+
+    print_dataset_sizes(train, evals)
+
+    return train,evals
+
+def debug_subset_data(conf, train, evals):
+    print("Using only n numbers rows for debugging")
+    subset_indices = range(conf.debug_set)
+    train = Subset(train, subset_indices)
+    for k, v in evals.items():
+        evals[k] = Subset(v, subset_indices)
+    return train, evals
+
+
+def print_dataset_sizes(train, evals):
+    print(f'{"==="*10} Total training dataset size is {len(train)}...')
+    for k, v in evals.items():
+        print(f'\t{"==="*10} Validation size for {k} dataset size is {len(v)}...')
+
+
+def load_and_process_datasets(conf, dataset_func_mapping):
     train_datasets = []
     evals = {}
     if conf.debug:
@@ -249,40 +278,22 @@ def load_rm_dataset(conf):
     for ds_name, dataset_kwargs in conf.dataset.items():
         print(f'===loading the {ds_name} dataset===\n')
         max_val_set = dataset_kwargs.get("max_val_set",None)
-        max_val_set = int(max_val_set*conf.hpt_data_frac) if conf.hpt_data_frac and max_val_set else max_val_set
 
         if len(dataset_kwargs.get("splits",[])) ==2:
             train_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][0])
             val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,split=dataset_kwargs["splits"][1])
         else:
-            train_ds,val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR,**dataset_kwargs)
+            train_ds,val_ds = dataset_func_mapping[ds_name](cache_dir=CACHE_DIR, **dataset_kwargs)
 
         if max_val_set and len(val_ds) > max_val_set:
             subset_indices = np.random.choice(len(val_ds), size=max_val_set, replace=False)
             val_ds = Subset(val_ds, subset_indices)
-        
-        if conf.hpt_data_frac:
-            hpt_size = int(len(train_ds)*conf.hpt_data_frac)
-            subset_indices = np.random.choice(len(train_ds), size=hpt_size, replace=False)
-            train_ds = Subset(train_ds, subset_indices)
 
         train_datasets.append(train_ds)
         evals[ds_name] = val_ds
         print(f'Size of {ds_name} training data: {len(train_ds)}')
         print(f'Size of {ds_name} validation data: {len(val_ds)}')
     train = ConcatDataset(train_datasets)
-
-    if conf.debug:
-        print("Using only n numbers rows for debuging")
-        subset_indices = range(conf.debug_set)
-        train = Subset(train, subset_indices)
-        for k,v in evals.items():
-            evals[k] = Subset(v, subset_indices)
-
-    print(f'{"==="*10} Total training dataset size is {len(train)}...')
-    for k,v in evals.items():
-        print(f'\t{"==="*10} Validation size for {k} dataset size is {len(v)}...')
-
     return train,evals
 
 

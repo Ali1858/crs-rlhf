@@ -140,6 +140,7 @@ class RMTrainer(Trainer):
         logits = model(
             input_ids=batch["input_ids"],
             attention_mask=batch["attention_mask"],
+            use_cache=False,
         ).logits
 
         loss = self.loss_fct(logits, cu_lens)
@@ -197,15 +198,27 @@ class AbsRMTrainer(Trainer):
     def __init__(self, model, args, train_collate_fn,**kwargs):
         super().__init__(model=model,args=args,**kwargs)
         self.train_collate_fn = train_collate_fn
-        self.loss_fct = None
+        self.loss_fct = nn.MSELoss()
 
     def compute_loss(self, model, inputs, return_logits=False):
+        labels = inputs.pop("labels")
         logits = model(input_ids=inputs["input_ids"],
               attention_mask=inputs["attention_mask"],
-              ).logit
-
-        loss = self.loss_fct(logits)
+              use_cache=False,
+              ).logits
+        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
         return (loss, logits) if return_logits else loss
+    
+
+    def _compute_loss(self, model, inputs):
+        inputs = self._prepare_inputs(inputs)
+        labels = inputs.pop("labels")
+        logits = model(input_ids=inputs["input_ids"],
+              attention_mask=inputs["attention_mask"],
+              use_cache=False,
+              ).logits
+        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
+        return loss, logits, labels
     
     
     def prediction_step(
@@ -216,16 +229,10 @@ class AbsRMTrainer(Trainer):
         ignore_keys,
     ):
         with torch.no_grad():
-            batch = self._prepare_inputs(inputs)
-            loss, logits = self.compute_loss(model, batch, return_logits=True)
+            loss, logits, labels = self._compute_loss(model, inputs)
 
         loss = loss.mean().detach()
-
-        labels = []
-        
-        # make sure labels are same as logits, needed for deepspeed
-        labels = torch.tensor(labels, device=logits.device, requires_grad=False).view(-1, 1)
-        return (loss, logits.T, labels.T)  # transposed to avoid truncation in evaluation_loop
+        return (loss, logits, labels)  # transposed to avoid truncation in evaluation_loop
 
     
     def get_train_dataloader(self):
