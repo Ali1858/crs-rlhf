@@ -240,18 +240,23 @@ def load_rm_dataset(conf):
 
 def load_rl_dataset(conf):
     from training_datasets.rl_dataset import get_oasst_rl
-    dataset_func_mapping  = {
-                        "oasst_export":get_oasst_rl,
-                        # "webgpt": get_webgpt_rm,
-                        }
-    train, evals = load_and_process_datasets(conf, dataset_func_mapping)
+
+    dataset_kwargs = conf.dataset["oasst_export"]
+    max_val_set = dataset_kwargs.get("max_val_set",None)
+
+    train_ds,val_ds = get_oasst_rl(cache_dir=CACHE_DIR, **dataset_kwargs)
+
+    if max_val_set and len(val_ds) > max_val_set:
+        subset_indices = np.random.choice(len(val_ds), size=max_val_set, replace=False)
+        val_ds = Subset(val_ds, subset_indices)
+
+    print(f'Size of oasst_export training data: {len(train_ds)}')
+    print(f'Size of oasst_export validation data: {len(val_ds)}')
 
     if conf.debug:
-        train, evals = debug_subset_data(conf, train, evals)
+        train, val_ds = debug_subset_data(conf, train, val_ds)
 
-    print_dataset_sizes(train, evals)
-
-    return train,evals
+    return train_ds,val_ds
 
 def debug_subset_data(conf, train, evals):
     print("Using only n numbers rows for debugging")
@@ -309,3 +314,17 @@ def get_rm_formatted(
                 ]
         else:
             return "{}{}{}".format(QA_SPECIAL_TOKENS["Answer"], text, eos_token)
+        
+
+def format_pairs(
+    pairs,
+    eos_token,
+    add_initial_reply_token=False):
+    assert isinstance(pairs, list)
+    conversations = [
+        "{}{}{}".format(QA_SPECIAL_TOKENS["Question" if i % 2 == 0 else "Answer"], pairs[i], eos_token)
+        for i in range(len(pairs))
+    ]
+    if add_initial_reply_token:
+        conversations.append(QA_SPECIAL_TOKENS["Answer"])
+    return conversations

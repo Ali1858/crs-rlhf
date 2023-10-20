@@ -33,6 +33,8 @@ def get_all_linear_layers(model):
     modules = {name.split(".")[-1] for name, module in model.named_modules() if isinstance(module, cls)}
     if "lm_head" in modules:
         modules.remove("lm_head")
+    if "score" in modules:
+        modules.remove("score")
 
     return list(modules)
 
@@ -63,7 +65,10 @@ def get_peft_config(reward_model):
                 'modules_to_save': ['embed_tokens', 'lm_head']
             })
         else:
-            base_config["task_type"] = "SEQ_CLS"
+            base_config.update({
+                "task_type":"SEQ_CLS",
+                "modules_to_save":["score"]
+            })
         return base_config
 
 
@@ -97,7 +102,7 @@ def load_base_model(device, config, reward_model):
     )
 
 
-def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multiple_of=16,need_embedding_resize=True,reward_model=False,only_tokenizer=False):
+def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multiple_of=16,need_embedding_resize=True,reward_model=False,add_tokens = True,only_tokenizer=False):
     """Rewritten from:
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L282
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/peft_modeling.py#L49
@@ -106,7 +111,6 @@ def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multi
     print(f'loading {config.model_name} model')
     tokenizer_name = config.init_from_adapter or config.resume_from_checkpoint or config.model_name
 
-    add_tokens = True
     if config.init_from_adapter or config.resume_from_checkpoint:
         add_tokens = False
 

@@ -199,6 +199,7 @@ class AbsRMTrainer(Trainer):
         super().__init__(model=model,args=args,**kwargs)
         self.train_collate_fn = train_collate_fn
         self.loss_fct = nn.MSELoss()
+        self.sigmoid = nn.Sigmoid()
 
     def compute_loss(self, model, inputs, return_logits=False):
         labels = inputs.pop("labels")
@@ -206,7 +207,8 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
+        pred = self.sigmoid(logits)
+        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
         return (loss, logits) if return_logits else loss
     
 
@@ -217,8 +219,9 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
-        return loss, logits, labels
+        pred = self.sigmoid(logits)
+        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
+        return loss, pred, labels
     
     
     def prediction_step(
@@ -229,10 +232,10 @@ class AbsRMTrainer(Trainer):
         ignore_keys,
     ):
         with torch.no_grad():
-            loss, logits, labels = self._compute_loss(model, inputs)
+            loss, pred, labels = self._compute_loss(model, inputs)
 
         loss = loss.mean().detach()
-        return (loss, logits, labels)  # transposed to avoid truncation in evaluation_loop
+        return (loss, pred, labels)  # transposed to avoid truncation in evaluation_loop
 
     
     def get_train_dataloader(self):
