@@ -254,7 +254,9 @@ def load_rl_dataset(conf):
     print(f'Size of oasst_export validation data: {len(val_ds)}')
 
     if conf.debug:
-        train, val_ds = debug_subset_data(conf, train, val_ds)
+        subset_indices = range(conf.debug_set)
+        train_ds = Subset(train_ds, subset_indices)
+        val_ds = Subset(val_ds, subset_indices)
 
     return train_ds,val_ds
 

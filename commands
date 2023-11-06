@@ -31,3 +31,6 @@ CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _sig
 
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _1100_step_bs16
 
+CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  sft --name_suffix _bs64
+
+CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs64_wgt_v2_no_sig_oversampled_at05_wgt_loss

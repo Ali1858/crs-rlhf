@@ -198,7 +198,7 @@ class AbsRMTrainer(Trainer):
     def __init__(self, model, args, train_collate_fn,**kwargs):
         super().__init__(model=model,args=args,**kwargs)
         self.train_collate_fn = train_collate_fn
-        self.loss_fct = nn.MSELoss()
+        self.loss_fct = nn.MSELoss(reduction="none")
         self.sigmoid = nn.Sigmoid()
 
     def compute_loss(self, model, inputs, return_logits=False):
@@ -207,8 +207,15 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        pred = self.sigmoid(logits)
-        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
+        # pred = self.sigmoid(logits)
+        weights = torch.ones_like(labels)
+        weights[labels <= 0.5] = 3.04  # 38852/3354 + oversampling leads to 6.30 if not use 11.5
+        # only using quality 38852/9292 4.1
+        # oversampled + v4 at 0.5 30690/10348 --> 2.96
+        # oversampled + v3 at 0.5 30175/9912 --> 3.04
+        
+        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
+        loss = (loss * weights).mean()
         return (loss, logits) if return_logits else loss
     
 
@@ -219,9 +226,15 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        pred = self.sigmoid(logits)
-        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
-        return loss, pred, labels
+        # pred = self.sigmoid(logits)
+        weights = torch.ones_like(labels)
+        weights[labels <= 0.5] = 3.04  # 38852/3354 + oversampling leads to 6.30 if not use 11.5
+        # only using quality 38852/9292 4.1
+        # oversampled at 0.5 30690/10348 --> 2.96
+
+        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
+        loss = (loss * weights).mean()
+        return loss, logits, labels
     
     
     def prediction_step(

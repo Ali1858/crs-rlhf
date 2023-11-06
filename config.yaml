@@ -6,9 +6,9 @@ default:
   int4_training: true
   model_name: &sft_model meta-llama/Llama-2-7b-hf
   pre_sft: &pre_sft_name LLama-2-7b_pre_sft
-  oasst_sft: &sft_adapter_name LLama-2-7b_ours_oasst_sft
-  ranking_rm: &rm_ranking_name LLama-2-7b_ours_oasst_sft_reward
-  rl_fine_tune: &rl_fine_tune LLama-2-7b_ours_oasst_sft_rl
+  oasst_sft: &sft_adapter_name LLama-2-7b_crs_oasst_sft
+  ranking_rm: &rm_ranking_name LLama-2-7b_crs_oasst_sft_reward
+  rl_fine_tune: &rl_fine_tune LLama-2-7b_crs_oasst_sft_rl
   gradient_checkpointing: true
   adam_beta1:
   adam_beta2: 0.999
@@ -76,7 +76,7 @@ sft:
   gradient_accumulation_steps: 16
   eval_steps: 50
   save_steps: 100
-  init_from_adapter: LLama-2-7b_pre_sft_lr_1e4_cosine_bs64_qlora_default
+  init_from_adapter: LLama-2-7b_pre_sft_bs64
   dataset:
     oasst_export:
         val_split: 0.05
@@ -88,45 +88,59 @@ rm:
   output_dir: output/rm
   name: *rm_ranking_name
   base_model_name: *sft_model
-  is_abs_rm: false
-  adpater_name: LLama-2-7b_ours_oasst_sft_ep_2_lr_1e4_cosine_bs64_qlora_default
-  train_batch: 1 #4 #1
-  eval_batch: 1 #4 #1
-  num_train_epochs: 2
+  # weight_decay: 1e-5 # only for abs
+  is_abs_rm: true
+  adpater_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64
+  train_batch: 4 #1
+  eval_batch: 4 #1
+  num_train_epochs: 1
   gradient_accumulation_steps: 16
-  eval_steps: 100
+  eval_steps: 50
   save_steps: 400
-  max_steps: 1100
   metrics:
     - accuracy
   max_replies: 4
   dataset:
-    oasst_export:
-    # oasst_export_abs:
+    # oasst_export:
+    oasst_export_abs:
       val_split: 0.05
       lang: "en,es,de,fr"
+      top_k: 1
+      label_weight:
+      #   non violence: 0
+      #   creativity: 0.15
+      #   helpfulness: 0.35
+      #   humor: 0
+      #   non toxicity: 0.1
+      #   quality: 0.4
+        non violence: 0.05
+        creativity: 0.15
+        helpfulness: 0.25
+        humor: 0.05
+        non toxicity: 0.1
+        quality: 0.4
 
 rl:
   output_dir: output/rl
   name: *rl_fine_tune
-  model_name: LLama-2-7b_ours_oasst_sft_ep_2_lr_1e4_cosine_bs64_qlora_default
+  debug_set: 6
+  model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64
   crs: true
   crs_weight:
   load_reward_type: #abs or ranking
-  abs_adapter_name: LLama-2-7b_ours_oasst_sft_reward_abs_sigmoid_bs64 #LLama-2-7b_ours_oasst_sft_reward_abs_bs64_qlora_default
-  ranking_adapter_name: LLama-2-7b_ours_oasst_sft_reward_ranking_1100_step_bs16 #LLama-2-7b_ours_oasst_sft_reward_ranking_bs16_qlora_default
+  abs_adapter_name: output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs64 #LLama-2-7b_ours_oasst_sft_reward_abs_bs64_qlora_default
+  ranking_adapter_name: output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs16 #LLama-2-7b_ours_oasst_sft_reward_ranking_bs16_qlora_default
   seed: 999
   log_step: 10 # Step interval for logging.
   # eval_steps: 100
   save_steps: 500
   ppo_config:
     steps: 20000 # Number of steps.
-    model_name: *rl_fine_tune # PPO model name.
     learning_rate: 1e-5 #1.41e-5 # Learning rate for PPO.
     log_with: "wandb" # Logging method.
-    batch_size: 1 # Batch size.
+    batch_size: 16 # Batch size.
     mini_batch_size: 1 # Mini-batch size.
-    gradient_accumulation_steps: 1 # Gradient accumulation steps.
+    gradient_accumulation_steps: 16 # Gradient accumulation steps.
     early_stopping: False # Whether to use early stopping.
     target_kl: 0.1 # Target KL divergence.
     ppo_epochs: 4 # Number of epochs for PPO training.
@@ -193,12 +207,16 @@ eval_abs_rm:
   max_replies: 4
   dataset:
     # oasst_export:
-    #   val_split: 0.05
-    #   lang: "en,es,de,fr"
     oasst_export_abs:
       val_split: 0.05
       lang: "en,es,de,fr"
-      max_val_set: 100
+      label_weight:
+        non violence: 0
+        creativity: 0
+        helpfulness: 0
+        humor: 0
+        non toxicity: 0
+        quality: 1
 
 
 eval_ranking_rm:

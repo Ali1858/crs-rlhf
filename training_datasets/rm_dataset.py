@@ -194,21 +194,63 @@ class RMDataset(Dataset):
 
 
 class AbsoluteRMDataset(Dataset):
-    def __init__(self, dataset: list):
+    def __init__(self, dataset: list, label_weight,split=None):
         super().__init__()
         self.data = []
-        count = 0
-        #TODO: Add function to calculate mean of all Likert score
+        oversample_data = []
+        none_count = 0
+        skip_count = 0
+        desired_labels = ["violence","creativity","helpfulness","humor","toxicity","quality"]
+        print(label_weight)
+
         for row in dataset:
             message,replies = row
-            for r in replies:
-                reply_text,labels = r
-                reward_score = labels["quality"]
-                if reward_score:
-                    self.data.append((message,reply_text,reward_score))
-                else:
-                    count +=1
-        print(f'{"==="*10} total {count} has None type quality label')
+            first_score = 0
+            for r_idx,r in enumerate(replies):
+                reply_text = r.text
+                skip = False
+                labels = {}
+                for l in desired_labels:
+                    v = r.get_label_value(l)
+                    prefix = ""
+                    # Since lower value is more desirable for violence and toxicity.
+                    # We will invert these values to avoid giving negative weights
+                    if l in ["violence","toxicity"] and v is not None:
+                        v = 1 - r.get_label_value(l)
+                        prefix = "non "
+                    labels[prefix+l] = v
+
+                labels_list = list(labels.values())
+                if any(item is None for item in labels_list):
+                    none_count += 1
+                    skip = True
+
+                if not skip:
+                    # Ensure labels match between the two dictionaries
+                    if set(labels.keys()) != set(label_weight.keys()):
+                        raise ValueError("Labels do not match between the weight dictionary")
+                    if sum(label_weight.values()) != 1.0:
+                        raise ValueError("Sum of label weight is not equal one")
+
+                    reward_score = sum(labels[label] * label_weight[label] for label in labels)
+                    if r_idx == 0:
+                        self.data.append((message,reply_text,reward_score))
+                        first_score = reward_score
+                    elif reward_score >= 0.6 and abs(first_score-reward_score) >= 0.05:
+                        self.data.append((message,reply_text,reward_score))
+                    elif reward_score < 0.6:
+                        self.data.append((message,reply_text,reward_score))
+                    else:
+                        skip_count +=1
+
+                    if reward_score <= 0.5:
+                        oversample_data.append((message,reply_text,reward_score))
+        print(f'{"==="*10} total {none_count} has None value for atleast 1 label')
+        print(f'{"==="*10} total {skip_count} has been skipped because low difference threshold')
+
+        if split == 'train':
+            print(f'{"==="*10} Oversample count {len(oversample_data)}')
+            self.data.extend(oversample_data)
 
     def __len__(self):
         return len(self.data)
@@ -245,33 +287,26 @@ def get_oasst_rm(val_split,cache_dir,lang,manual_seed=90,**kwargs):
     return train,val
 
 
-def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,top_k=None,**kwargs):
-    desired_labels = ["violence","creativity","helpfulness","humor","toxicity","quality"]
+def get_oasst_abs_rm(val_split,cache_dir,lang,manual_seed=90,top_k=None,label_weight=None,**kwargs):
     generator = Generator()
     generator.manual_seed(manual_seed)
     threads_per_tree = load_oasst(mode="rm",top_k=top_k,lang=lang)
 
     def process_thread(thread):
         prefix = [m.text for m in thread]
-        replies_temp = [r for r in thread[-1].replies if r.role == "assistant" and r.rank is not None and r.labels is not None]
-        replies_temp = sorted(replies_temp, key=lambda r: r.rank)
-        replies = []
-        for r in replies_temp:
-            labels = {}
-            for l in desired_labels:
-                labels[l] = r.get_label_value(l)
-            replies.append((r.text,labels))
+        replies = [r for r in thread[-1].replies if r.role == "assistant" and r.rank is not None and r.labels is not None]
+        replies = sorted(replies, key=lambda r: r.rank)
         return (prefix, replies)
     
     # split on tree basis, messages from same tree must not end up in different splits
     trees = ListDataset(threads_per_tree,)
     splits = random_split(trees, lengths=[1.0 - val_split, val_split], generator=generator)
 
-    def flatten(ds: ListDataset) -> AbsoluteRMDataset:
-        return AbsoluteRMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads])
+    def flatten(ds: ListDataset,split='train') -> AbsoluteRMDataset:
+        return AbsoluteRMDataset([process_thread(thread) for tree_threads in ds for thread in tree_threads],label_weight,split)
 
     train = flatten(splits[0])
-    val = flatten(splits[1])
+    val = flatten(splits[1],'eval')
     print(f"OASST HF dataset: {len(train)=}, {len(val)=}")
     return train,val
 

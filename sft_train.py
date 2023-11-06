@@ -104,7 +104,9 @@ def create_trainer(conf):
                 for para in module.parameters():
                     print(para.requires_grad)
                 print(f'Embedding {module.weight.shape} and {module.weight.dtype}')
-    
+    # or name, param in base_model.named_parameters():
+    #     # freeze base model's layers
+    #     print(name,param.requires_grad)
     os.environ["WANDB_WATCH"] = "all"
     wandb_project_name = f"supervised-finetuning{wandb_suffix}"
     wandb.init(
