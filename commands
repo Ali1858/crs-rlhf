@@ -31,6 +31,42 @@ CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _sig
 
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _1100_step_bs16
 
-CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  sft --name_suffix _bs64
+CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  sft --name_suffix _bs64_ep_1
+CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs_64_ep_1
 
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs64_wgt_v2_no_sig_oversampled_at05_wgt_loss
+
+python rm_train.py --config_subset  rm --name_suffix _bs64_mean_oversampled
+python rm_train.py --config_subset  rm --name_suffix _bs64_v32_wgt_oversampled
+python rl_train.py --config_subset  rl --name_suffix _bs16_qlora
+
+accelerate launch --config_file accelerate_config.yaml rl_train.py --config_subset  rl --name_suffix _bs16_qlora
+
+
+# accelerate configuration saved at /home/alikhan/.cache/huggingface/accelerate/default_config.yaml          
+accelerate launch --multi_gpu --num_machines 1 --num_processes 2 rl_train.py --config_subset  rl --name_suffix _bs16_qlora
+
+
+
+
+# v2
+        # violence: 0
+        # creativity: 0.15
+        # helpfulness: 0.3
+        # humor: 0
+        # toxicity: -0.15
+        # quality: 0.4
+        # only qualiyt
+        # non violence: 0
+        # creativity: 0
+        # helpfulness: 0
+        # humor: 0
+        # non toxicity: 0
+        # quality: 1
+        # mean
+        # non violence: 0.167
+        # creativity: 0.167
+        # helpfulness: 0.167
+        # humor: 0.167
+        # non toxicity: 0.167
+        # quality: 0.165

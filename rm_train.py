@@ -93,8 +93,22 @@ def create_trainer(conf):
     train_ds , eval_ds = load_rm_dataset(conf)
     model,tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens, need_embedding_resize=False,reward_model=True)
     if conf.is_abs_rm:
+        from functools import partial
+        scores = []
+        abs_oversample_threshold = conf.dataset["oasst_export_abs"]["abs_oversample_threshold"]
+        for i in train_ds:
+            _, _, score = i
+            if score <= abs_oversample_threshold:
+                scores.append(score)
+        loss_weight = len(train_ds)/len(scores)
+
+        # 38852/3354 + oversampling leads to 6.30 if not use 11.5
+        # only using quality 38852/9292 4.1
+        # oversampled + v4 at 0.5 30690/10348 --> 2.96
+        # oversampled + v3 at 0.5 30175/9912 --> 3.04
+        
         metrics = abs_reward_metrics
-        Trainer = AbsRMTrainer
+        Trainer = partial(AbsRMTrainer,loss_wgt_and_threshold=(loss_weight, abs_oversample_threshold))
         collate_fn = AbsoluteScoreDataCollator(
             tokenizer,
             max_length=conf.collator["max_length"],

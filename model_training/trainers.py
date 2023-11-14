@@ -195,11 +195,15 @@ class RMTrainer(Trainer):
 https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/trainer_rm.py#L31
 """
 class AbsRMTrainer(Trainer):
-    def __init__(self, model, args, train_collate_fn,**kwargs):
+    def __init__(self, model, args, train_collate_fn,loss_wgt_and_threshold,**kwargs):
         super().__init__(model=model,args=args,**kwargs)
         self.train_collate_fn = train_collate_fn
-        self.loss_fct = nn.MSELoss(reduction="none")
+        # self.loss_fct = nn.MSELoss(reduction="none")
+        self.loss_fct = nn.BCELoss(reduction="none")
         self.sigmoid = nn.Sigmoid()
+        self.loss_weight,self.loss_threshold = loss_wgt_and_threshold
+        print(f'The weight for under represented labels is {self.loss_weight} and threshold is {self.loss_threshold}')
+        self.loss_weight = 1.2 #self.loss_weight * 0.5
 
     def compute_loss(self, model, inputs, return_logits=False):
         labels = inputs.pop("labels")
@@ -207,14 +211,11 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        # pred = self.sigmoid(logits)
+        pred = self.sigmoid(logits)
         weights = torch.ones_like(labels)
-        weights[labels <= 0.5] = 3.04  # 38852/3354 + oversampling leads to 6.30 if not use 11.5
-        # only using quality 38852/9292 4.1
-        # oversampled + v4 at 0.5 30690/10348 --> 2.96
-        # oversampled + v3 at 0.5 30175/9912 --> 3.04
+        weights[labels <= self.loss_threshold] = self.loss_weight 
         
-        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
+        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
         loss = (loss * weights).mean()
         return (loss, logits) if return_logits else loss
     
@@ -226,15 +227,13 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        # pred = self.sigmoid(logits)
+        pred = self.sigmoid(logits)
         weights = torch.ones_like(labels)
-        weights[labels <= 0.5] = 3.04  # 38852/3354 + oversampling leads to 6.30 if not use 11.5
-        # only using quality 38852/9292 4.1
-        # oversampled at 0.5 30690/10348 --> 2.96
+        weights[labels <= self.loss_threshold] = self.loss_weight 
 
-        loss = self.loss_fct(logits.view(-1).float(), labels.view(-1).float())
+        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
         loss = (loss * weights).mean()
-        return loss, logits, labels
+        return loss, pred, labels
     
     
     def prediction_step(
