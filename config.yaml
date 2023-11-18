@@ -137,11 +137,11 @@ rl:
     steps: 20000 # Number of steps.
     learning_rate: 1.41e-5 #1.41e-5 # Learning rate for PPO.
     log_with: "wandb" # Logging method.
-    batch_size: 16 # Batch size.
+    batch_size: 32 # Batch size.
     mini_batch_size: 2 # Mini-batch size.
-    gradient_accumulation_steps: 8 # Gradient accumulation steps.
+    gradient_accumulation_steps: 16 # Gradient accumulation steps.
     early_stopping: False # Whether to use early stopping.
-    target_kl: 6.0 #0.1 # Target KL divergence.
+    target_kl: 0.1 # Target KL divergence.
     ppo_epochs: 4 # Number of epochs for PPO training.
     seed: 90 # Random seed.
     init_kl_coef: 0.2 # Initial KL coefficient.

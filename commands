@@ -26,19 +26,22 @@ CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  sft --name_suffix _e
 CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  pre_sft --name_suffix only_bs64_qlora_default
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs64_qlora_default
 
-CUDA_VISIBLE_DEVICES=0 python rl_train.py --config_subset  rl --name_suffix _qlora_default_test
+CUDA_VISIBLE_DEVICES=0 python rl_train.py --config_subset  rl --name_suffix bs_32_rank_pad_left
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _sigmoid_bs64
 
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _1100_step_bs16
 
 CUDA_VISIBLE_DEVICES=0 python sft_train.py --config_subset  sft --name_suffix _bs64_ep_1
-CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs_64_ep_1
+CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs_64_ep_1_pad_left
+CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs_128_ep_1_logistic_pad_left
+
+CUDA_VISIBLE_DEVICES=1  python rl_train.py --config_subset  rl --name_suffix _bs64_abs_rank_sigmoid
 
 CUDA_VISIBLE_DEVICES=0 python rm_train.py --config_subset  rm --name_suffix _bs64_wgt_v2_no_sig_oversampled_at05_wgt_loss
 
 python rm_train.py --config_subset  rm --name_suffix _bs64_mean_oversampled
 python rm_train.py --config_subset  rm --name_suffix _bs64_v32_wgt_oversampled
-python rl_train.py --config_subset  rl --name_suffix _bs16_qlora
+CUDA_VISIBLE_DEVICES=0  python rl_train.py --config_subset  rl --name_suffix _bs64_senti_pipeline_test
 
 accelerate launch --config_file accelerate_config.yaml rl_train.py --config_subset  rl --name_suffix _bs16_qlora
 

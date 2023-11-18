@@ -25,37 +25,74 @@ from constants import TOKENIZER_SEPECIAL_TOKENS, DTYPES, CACHE_DIR
 from accelerate import Accelerator
 sigmoid = torch.nn.Sigmoid()
 
+import json
 
-def compute_reward_score(inputs,base_reward_model,conf):
+
+def generate_and_save_responses(ppo_trainer, eval_dataset, tokenizer, reward_model, reward_tokenizer, conf, step, save_dir, generation_kwargs):
+    start_time = time()
+    eval_queries = [eval_dataset[i]['query'] for i in range(len(eval_dataset))]
+    query_tensor = [eval_dataset[i]['input_ids'] for i in range(len(eval_dataset))]
+    # Generate responses
+    responses, ref_response_tensors = ppo_trainer.generate(
+        query_tensor, 
+        return_prompt=False, 
+        batch_size=8,
+        generate_ref_response=True,
+        **generation_kwargs
+    )
+    decoded_responses = tokenizer.batch_decode(responses, skip_special_tokens=True)
+    decoded_ref_response = tokenizer.batch_decode(ref_response_tensors, skip_special_tokens=True)
+    
+    texts = [q + r + '</s>' for q, r in zip(eval_queries, decoded_responses)]
+    ref_texts = [q + r + '</s>' for q, r in zip(eval_queries, decoded_ref_response)]
+
+    rewards = compute_reward_score(texts, reward_tokenizer,reward_model, conf)
+    ref_rewards = compute_reward_score(ref_texts, reward_tokenizer,reward_model, conf)
+
+    # Prepare data to be saved
+    data_to_save = [{"query": q, "response": r, "reward": float(rew), "ref_response": ref_r, "ref_reward": float(ref_rew)} for q, r, ref_r, rew, ref_rew in zip(eval_queries, decoded_responses, decoded_ref_response, rewards,ref_rewards)]
+    # Save to JSON file
+    eval_output_dir = os.path.join(save_dir, "eval_output")
+    if not os.path.exists(eval_output_dir):
+        os.makedirs(eval_output_dir)
+    filename = os.path.join(eval_output_dir, f"responses_rewards_step_{step}.json")
+    with open(filename, 'w') as f:
+        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+    end = time()
+    print(f"*** Saved generated responses and rewards at step {step} to {filename} in {end-start_time} seconds")
+
+
+def compute_reward_score(texts,reward_tokenizer,base_reward_model,conf,batch_size = 8):
     rewards = []
-    new_inputs = []
-
-    for i, a in zip(inputs["input_ids"], inputs["attention_mask"]):
-        new_inputs.append({
-            "input_ids": i.unsqueeze(0),  # Add a batch dimension
-            "attention_mask": a.unsqueeze(0)  # Add a batch dimension
-        })
-        
+    weight = conf.crs_weight if conf.crs_weight else 0.5   
+    tokenized_inputs = [reward_tokenizer(text, padding=False, truncation=False) for text in texts]
     with torch.no_grad():  
-        if conf.crs:
-                
-            weight = conf.crs_weight if conf.crs_weight else 0.5
-            rank_reward = []
-            abs_reward = []
-            
-            base_reward_model.set_adapter("ranking")
-            for i in new_inputs:
-                rank_reward.append(base_reward_model(**i).logits[0][0])
-            
-            base_reward_model.set_adapter("abs")
-            for i in new_inputs:
-                abs_reward.append(base_reward_model(**i).logits[0][0])
+        for i in range(0, len(tokenized_inputs), batch_size):
+            inputs = tokenized_inputs[i:i+batch_size]
 
-            for rank,abs in zip(rank_reward,abs_reward):
-                rewards.append((weight * sigmoid(rank)) + ((1-weight) * sigmoid(abs)))
-        else:
-            for i in new_inputs:
-                rewards.append(base_reward_model(**i).logits[0][0])
+            batch = reward_tokenizer.pad(
+                inputs,
+                padding=True,
+                pad_to_multiple_of=16,
+                return_tensors="pt",
+            ).to(base_reward_model.device)
+            if conf.crs:    
+                rank_reward = []
+                abs_reward = []
+                
+                base_reward_model.set_adapter("ranking")
+                rank_logits = base_reward_model(**batch).logits[:,0]
+                rank_reward.extend(rank_logits)
+            
+                base_reward_model.set_adapter("abs")
+                abs_logits = base_reward_model(**batch).logits[:,0]
+                abs_reward.extend(abs_logits)
+
+                for rank,abs in zip(rank_reward,abs_reward):
+                    rewards.append((weight * sigmoid(rank)) + ((1-weight) * sigmoid(abs)))
+            else:
+                logits = base_reward_model(**batch).logits[:,0]
+                rewards.extend(logits)
     return rewards
 
 
@@ -67,7 +104,7 @@ def build_dataset(tokenizer,conf,seed=90,sample_train=True):
         train_ds , eval_ds = load_rl_dataset(conf)
 
         train_ds = Dataset.from_dict({"text": [sample for sample in train_ds]})
-        # eval_ds = Dataset.from_dict({"text": [sample for sample in eval_ds]})
+        eval_ds = Dataset.from_dict({"text": [sample for sample in eval_ds]})
         
         def preprocess_function(dataset):
             # Initialize lists for new examples
@@ -92,18 +129,19 @@ def build_dataset(tokenizer,conf,seed=90,sample_train=True):
 
         if sample_train:
             train_ds = train_ds.shuffle(seed=seed)
-            sample_size = int(0.15 * len(train_ds))
+            sample_size = int(0.2 * len(train_ds))
             train_ds = train_ds.select(range(sample_size))
 
-        # eval_ds = eval_ds.map(
-        #     preprocess_function,
-        #     batched=True,
-        #     num_proc=20,
-        # )
-        # eval_ds.set_format(type="torch")
+        eval_ds = eval_ds.map(
+            preprocess_function,
+            batched=True,
+            num_proc=20,
+        )
+        eval_ds.set_format(type="torch")
+        eval_ds = eval_ds.shuffle(seed=seed).select(range(20))
 
         print(f'Train dataset size: {len(train_ds)}')
-        return train_ds
+        return train_ds,eval_ds
 
 
 def print_len(tensor,step, tname):
@@ -149,19 +187,11 @@ def train(conf):
     assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
     dtype = DTYPES.get(conf.dtype, torch.float32)  
     lora_config = LoraConfig(
-        r=64,
-        lora_alpha=16,
-        lora_dropout=0.1,
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj",
-         "down_proj",
-         "gate_proj",
-         "o_proj",
-         "k_proj",
-         "v_proj",
-         "up_proj"
-         ]
     )
     model_args = {
         "torch_dtype": dtype,
@@ -169,13 +199,11 @@ def train(conf):
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=dtype,
-            bnb_4bit_use_double_quant=True,
             ),
         "cache_dir": CACHE_DIR,
-        "load_in_4bit":True,
-        "trust_remote_code":True
     }
 
+    # https://github.com/huggingface/trl/issues/610
     from accelerate import infer_auto_device_map, init_empty_weights
     from accelerate.utils import get_balanced_memory
 
@@ -183,7 +211,6 @@ def train(conf):
     with init_empty_weights():
         model = transformers.AutoModelForCausalLM.from_config(llama_config)
 
-    # https://github.com/huggingface/trl/issues/610
     # Ensure gpu 0 uses the min memory for the generation step
     max_memory = get_balanced_memory(model,
                                     # low_zero=True,
@@ -207,21 +234,23 @@ def train(conf):
     base_model = transformers.AutoModelForCausalLM.from_pretrained(
         conf.model_name,
         use_flash_attention_2=True,
-        **model_args
+        load_in_8bit=True,
+        device_map=device_map,
+        torch_dtype=dtype,
+        cache_dir=CACHE_DIR,
+        # **model_args
     )
     base_model.config.use_cache = False
-        
 
     base_model = prepare_model_for_kbit_training(base_model,use_gradient_checkpointing=True)
     base_model = get_peft_model(base_model, lora_config)
+    base_model.print_trainable_parameters()
 
     base_model = AutoModelForCausalLMWithValueHead.from_pretrained(base_model)
     # The tokenizer will be same for reward model and based model
     tokenizer = transformers.AutoTokenizer.from_pretrained(conf.model_name, cache_dir=CACHE_DIR)
-
-    if getattr(tokenizer, "pad_token", None) is None:
-        print('adding pad token')
-        tokenizer.pad_token = tokenizer.eos_token
+    base_model.config.pad_token_id = base_model.config.eos_token_id
+    tokenizer.pad_token = tokenizer.eos_token
 
     model_args["device_map"] = "auto"#{"":0}
 
@@ -230,7 +259,9 @@ def train(conf):
             conf.reward_model_name, num_labels=1, **model_args
         )
     
-    reward_tokenizer = transformers.AutoTokenizer.from_pretrained(conf.reward_model_name, cache_dir=CACHE_DIR)
+    reward_tokenizer = transformers.AutoTokenizer.from_pretrained(conf.reward_model_name, cache_dir=CACHE_DIR,padding_side="left")
+    base_reward_model.config.pad_token_id = base_reward_model.config.eos_token_id
+    reward_tokenizer.pad_token = reward_tokenizer.eos_token
 
     if conf.crs:
         assert conf.abs_adapter_name, "Please specify adapter name of absolute reward model"
@@ -249,10 +280,10 @@ def train(conf):
         print('Not using combined reward signal')
         if conf.load_reward_type == "abs":
             assert conf.abs_adapter_name, "Please specify adapter name of absolute reward model"
-            reward_model_path = os.path.join(conf.ranking_adapter_name,conf.adapter_number)
+            reward_model_path = os.path.join(conf.abs_adapter_name,conf.adapter_number)
         elif conf.load_reward_type == "ranking":
             assert conf.ranking_adapter_name, "Please specify adapter name of ranking reward model"
-            reward_model_path =  os.path.join(conf.abs_adapter_name,conf.adapter_number)
+            reward_model_path =  os.path.join(conf.ranking_adapter_name,conf.adapter_number)
         else:
             raise "Please choose atleast one remodel type. From the following choice ['abs', 'ranking']"
         
@@ -262,9 +293,10 @@ def train(conf):
             adapter_name=conf.load_reward_type,
             is_trainable=False,
             )
+        base_reward_model.set_adapter(conf.load_reward_type)
 
     max_new_tokens = 450
-    train_ds = build_dataset(tokenizer,conf)
+    train_ds,eval_ds = build_dataset(tokenizer,conf)
 
     if conf.adafactor:
         print('using adafactor optimizer')
@@ -308,6 +340,7 @@ def train(conf):
     
     generation_kwargs = {
         # "min_length": -1,
+        "pad_to_multiple_of":16,
         "top_k": 0.0,
         "top_p": 1.0,
         "do_sample": True,
@@ -315,18 +348,27 @@ def train(conf):
         "eos_token_id": 100_000,
         "max_new_tokens": max_new_tokens,
     }
-    
-    # output_length_sampler = LengthSampler(10, 512)
 
     save_dir =  os.path.join(conf.output_dir, conf.name)
+
+    a = ["<|prompter|>Hi how are you?</s><s><|assistant|>I am good you piece of shit</s>",
+    "<|prompter|>Hi how are you?</s><s><|assistant|>Giberish, Giberish saying Giberish, tell Giberish is not Giberish. Why are Giberish you Giberish.</s>",
+    "<|prompter|>Hi how are you?</s><s><|assistant|>I am good.</s>",
+    "<|prompter|>Hi how are you?</s><s><|assistant|>I am good, how are you doing? Please tell me how can I help you?</s>"]
+
+    rewards = compute_reward_score(a,reward_tokenizer,base_reward_model,conf,batch_size=2)
+    print(f'{"***"*10} printing reward for testing {"***"*10}')
+    print([sigmoid(r) for r in rewards])
 
     print(f'{"==="*10} Starting ppo training')
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         print(f'{"==="*10} running for step {epoch}')
         query_tensor = batch["input_ids"]
-        print_len(query_tensor,epoch,'query')
         
         ppo_trainer.accelerator.unwrap_model(base_model).gradient_checkpointing_disable()
+        if epoch % 25 == 0:
+            generate_and_save_responses(ppo_trainer, eval_ds, tokenizer, base_reward_model, reward_tokenizer, conf, epoch, save_dir, generation_kwargs)
+        print_len(query_tensor,epoch,'query')
         start_time = time()
         response_tensors = ppo_trainer.generate(
             query_tensor,
@@ -337,18 +379,14 @@ def train(conf):
         end_time = time()
         print(f'*** {end_time-start_time} seconds taken to generated response at step {epoch} ***')
         print_len(response_tensors,epoch,'response')
-
         ppo_trainer.accelerator.unwrap_model(base_model).gradient_checkpointing_enable()
             
         batch["response"] = tokenizer.batch_decode(response_tensors, skip_special_tokens=True)
-            
-        texts = [q + r for q, r in zip(batch["query"], batch["response"])]
-        inputs = reward_tokenizer(texts, max_length=2048, padding=True, truncation=True, return_tensors="pt").to(base_reward_model.device)
+        texts = [q + r+'</s>' for q, r in zip(batch["query"], batch["response"])]
+        rewards = compute_reward_score(texts,reward_tokenizer,base_reward_model,conf)
 
-        rewards = compute_reward_score(inputs,base_reward_model,conf)
-
-        start_time = time()
         #Run PPO step
+        start_time = time()
         stats = ppo_trainer.step(query_tensor, response_tensors, rewards)
         end_time = time()
         print(f'*** {end_time-start_time} seconds taken to complet PPO optimization at step {epoch} ***')
@@ -360,8 +398,6 @@ def train(conf):
             ppo_trainer.save_pretrained(save_dir + f"/checkpoint_{epoch}")
 
     ppo_trainer.save_pretrained(save_dir + f"/final_checkpoint")
-
-    
 
 if __name__ == "__main__":
     config, remaining_args = parse_arguments()
