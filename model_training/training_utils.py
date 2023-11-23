@@ -16,9 +16,9 @@ def get_tokenizer(tokenizer_name,special_tokens,add_additional_special_tokens=Tr
     https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/utils/utils.py#L208"""
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name, cache_dir=CACHE_DIR)
-    tokenizer.add_special_tokens(special_tokens)
 
     if add_additional_special_tokens:
+        tokenizer.add_special_tokens(special_tokens)
         additional_special_tokens = tokenizer.special_tokens_map.get("additional_special_tokens", [])
         additional_special_tokens += list(QA_SPECIAL_TOKENS.values())
         tokenizer.add_special_tokens({"additional_special_tokens": additional_special_tokens})
@@ -49,10 +49,10 @@ def resize_embeddings(model,tokenizer,pad_vocab_size_to_multiple_of):
         print("Resizing embeddings to", target_size)
         model.resize_token_embeddings(target_size)
 
-def get_peft_config(reward_model):
+def get_peft_config(reward_model,r=64,alpha=16):
         base_config = {
-            'r': 64,
-            'lora_alpha': 16,
+            'r': r,
+            'lora_alpha': alpha,
             'lora_dropout': 0.1,
             'bias': 'none',
             'inference_mode': False,
@@ -120,7 +120,14 @@ def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multi
         return tokenizer
 
     model = load_base_model(device, config, reward_model)
-    peft_config = get_peft_config(reward_model)
+    if config.int4_training:
+        peft_config = get_peft_config(reward_model)
+        model = prepare_model_for_kbit_training(model,use_gradient_checkpointing=config.gradient_checkpointing)
+    elif config.int8_training:
+        peft_config = get_peft_config(reward_model,r=16,alpha=32)
+        model = prepare_model_for_kbit_training(model,use_gradient_checkpointing=config.gradient_checkpointing)
+    else:
+        peft_config = get_peft_config(reward_model,r=16,alpha=32)
 
     if peft_config.get("target_modules") == "all":
         peft_config.update({"target_modules": get_all_linear_layers(model)})
@@ -133,7 +140,6 @@ def get_model_and_tokenizer(device,config,special_tokens,pad_vocab_size_to_multi
         print(f'=== model:/n{model}/n===')
 
     lora_config = LoraConfig(**peft_config)
-    model = prepare_model_for_kbit_training(model,use_gradient_checkpointing=config.gradient_checkpointing)
     
     if need_embedding_resize:
         resize_embeddings(model, tokenizer, pad_vocab_size_to_multiple_of)

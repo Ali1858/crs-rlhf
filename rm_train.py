@@ -92,6 +92,11 @@ def create_trainer(conf):
     merge_and_save_peft_model(conf)
     train_ds , eval_ds = load_rm_dataset(conf)
     model,tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens, need_embedding_resize=False,reward_model=True)
+    print(f'tokenizer pad {tokenizer.pad_token} and model pad {model.config.pad_token_id}')
+    print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
+    if model.config.pad_token_id is None or model.config.pad_token_id == 0:
+        print('changing model pad token id')
+        model.config.pad_token_id = tokenizer.pad_token_id
     if conf.is_abs_rm:
         from functools import partial
         scores = []

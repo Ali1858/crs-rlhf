@@ -144,70 +144,12 @@ def build_dataset(tokenizer,conf,seed=90,sample_train=True):
         return train_ds,eval_ds
 
 
-def print_len(tensor,step, tname):
-    l = [t.shape[0] for t in tensor]
-    print(f'*** stats for {tname} tensor at step {step} are: tensor len {len(l)}, min len {min(l)}, max len {max(l)}, avg len {np.mean(l)}, std len {np.std(l)} ***')
-    
-
-def train(conf):
-    print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
-    print_yaml_config(conf)
-
-    # needs to happen before model loading in case of stage 3 training
-    device_map = "auto"#{"":0} #
-    # device_map = {"": Accelerator().process_index}
-
-    # set seed before initializing value head for deterministic eval
-    set_seed(conf.seed)
-
-    ppo_config = conf.ppo_config
-    config = PPOConfig(
-        exp_name=conf.name,
-        steps=ppo_config["steps"],
-        model_name=conf.name,
-        learning_rate=float(ppo_config["learning_rate"]),
-        log_with=ppo_config["log_with"],
-        batch_size=ppo_config["batch_size"],
-        mini_batch_size=ppo_config["mini_batch_size"],
-        gradient_accumulation_steps=ppo_config["gradient_accumulation_steps"],
-        optimize_cuda_cache=True,
-        early_stopping=ppo_config["early_stopping"],
-        target_kl=ppo_config["target_kl"],
-        ppo_epochs=ppo_config["ppo_epochs"],
-        seed=ppo_config["seed"],
-        init_kl_coef=ppo_config["init_kl_coef"],
-        adap_kl_ctrl=ppo_config["adap_kl_ctrl"],
-        tracker_project_name='rl',
-        task_name=conf.name,
-    )
-
-    conf.model_name =  os.path.join(conf.model_name,'merged')
-    conf.reward_model_name =  os.path.join(conf.reward_model_name,'merged')
-
-    assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
-    dtype = DTYPES.get(conf.dtype, torch.float32)  
-    lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model_args = {
-        "torch_dtype": dtype,
-        "quantization_config": BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=dtype,
-            ),
-        "cache_dir": CACHE_DIR,
-    }
-
+def get_base_model_device_map(model_name,dtype):
     # https://github.com/huggingface/trl/issues/610
     from accelerate import infer_auto_device_map, init_empty_weights
     from accelerate.utils import get_balanced_memory
 
-    llama_config = transformers.AutoConfig.from_pretrained(conf.model_name)      
+    llama_config = transformers.AutoConfig.from_pretrained(model_name)      
     with init_empty_weights():
         model = transformers.AutoModelForCausalLM.from_config(llama_config)
 
@@ -229,8 +171,19 @@ def train(conf):
     # As per the peft instructions, make sure the lm_head is on gpu 0.  
     # This works for Llama, not sure what to set for pythia models.
     device_map["lm_head"] = 0
-    model_args["device_map"] = device_map
+    return device_map
 
+
+def get_base_model(conf,dtype,r=16,alpha=32):
+    print('**** loading base model ****')
+    lora_config = LoraConfig(
+        r=r,
+        lora_alpha=alpha,
+        lora_dropout=0.1,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    device_map = get_base_model_device_map(conf.model_name,dtype)
     base_model = transformers.AutoModelForCausalLM.from_pretrained(
         conf.model_name,
         use_flash_attention_2=True,
@@ -238,30 +191,45 @@ def train(conf):
         device_map=device_map,
         torch_dtype=dtype,
         cache_dir=CACHE_DIR,
-        # **model_args
     )
     base_model.config.use_cache = False
-
     base_model = prepare_model_for_kbit_training(base_model,use_gradient_checkpointing=True)
     base_model = get_peft_model(base_model, lora_config)
     base_model.print_trainable_parameters()
 
     base_model = AutoModelForCausalLMWithValueHead.from_pretrained(base_model)
-    # The tokenizer will be same for reward model and based model
     tokenizer = transformers.AutoTokenizer.from_pretrained(conf.model_name, cache_dir=CACHE_DIR)
-    base_model.config.pad_token_id = base_model.config.eos_token_id
-    tokenizer.pad_token = tokenizer.eos_token
+    print(f'tokenizer pad {tokenizer.pad_token} and model pad {base_model.config.pad_token_id}')
+    print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
+    if base_model.config.pad_token_id is None or base_model.config.pad_token_id == 0:
+        print('changing model pad token id')
+        base_model.config.pad_token_id = tokenizer.pad_token_id
+    return base_model, tokenizer
 
-    model_args["device_map"] = "auto"#{"":0}
-
+def get_reward_tokenizer_model(conf,dtype):
+    print('**** loading reward model ****')
+    model_args = {
+        "torch_dtype": dtype,
+        "quantization_config": BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=dtype,
+            ),
+        "cache_dir": CACHE_DIR,
+    }
     # Since reward models are trained using the same base model, we should use same model
     base_reward_model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            conf.reward_model_name, num_labels=1, **model_args
+            conf.reward_model_name,
+            num_labels=1,
+            device_map="auto",
+            **model_args
         )
-    
-    reward_tokenizer = transformers.AutoTokenizer.from_pretrained(conf.reward_model_name, cache_dir=CACHE_DIR,padding_side="left")
-    base_reward_model.config.pad_token_id = base_reward_model.config.eos_token_id
-    reward_tokenizer.pad_token = reward_tokenizer.eos_token
+    reward_tokenizer = transformers.AutoTokenizer.from_pretrained(conf.reward_model_name, cache_dir=CACHE_DIR)
+    print(f'tokenizer pad {reward_tokenizer.pad_token} and model pad {base_reward_model.config.pad_token_id}')
+    print(f'tokenizer eos {reward_tokenizer.eos_token} and model eos {reward_tokenizer.eos_token_id}')
+    if base_reward_model.config.pad_token_id is None or base_reward_model.config.pad_token_id == 0:
+        print('changing model pad token id')
+        base_reward_model.config.pad_token_id = reward_tokenizer.pad_token_id
 
     if conf.crs:
         assert conf.abs_adapter_name, "Please specify adapter name of absolute reward model"
@@ -294,8 +262,49 @@ def train(conf):
             is_trainable=False,
             )
         base_reward_model.set_adapter(conf.load_reward_type)
+    return base_reward_model,reward_tokenizer
 
-    max_new_tokens = 450
+
+def print_len(tensor,step, tname):
+    l = [t.shape[0] for t in tensor]
+    print(f'*** stats for {tname} tensor at step {step} are: tensor len {len(l)}, min len {min(l)}, max len {max(l)}, avg len {np.mean(l)}, std len {np.std(l)} ***')
+    
+
+def train(conf):
+    print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
+    print_yaml_config(conf)
+
+    set_seed(conf.seed)
+
+    ppo_config = conf.ppo_config
+    config = PPOConfig(
+        exp_name=conf.name,
+        steps=ppo_config["steps"],
+        model_name=conf.name,
+        learning_rate=float(ppo_config["learning_rate"]),
+        log_with=ppo_config["log_with"],
+        batch_size=ppo_config["batch_size"],
+        mini_batch_size=ppo_config["mini_batch_size"],
+        gradient_accumulation_steps=ppo_config["gradient_accumulation_steps"],
+        optimize_cuda_cache=True,
+        early_stopping=ppo_config["early_stopping"],
+        target_kl=ppo_config["target_kl"],
+        ppo_epochs=ppo_config["ppo_epochs"],
+        seed=ppo_config["seed"],
+        init_kl_coef=ppo_config["init_kl_coef"],
+        adap_kl_ctrl=ppo_config["adap_kl_ctrl"],
+        tracker_project_name='rl',
+        task_name=conf.name,
+    )
+
+    conf.model_name =  os.path.join(conf.model_name,'merged')
+    conf.reward_model_name =  os.path.join(conf.reward_model_name,'merged')
+
+    assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
+    dtype = DTYPES.get(conf.dtype, torch.float32)  
+    
+    base_model,tokenizer = get_base_model(conf,dtype)
+    base_reward_model,reward_tokenizer = get_reward_tokenizer_model(conf,dtype)
     train_ds,eval_ds = build_dataset(tokenizer,conf)
 
     if conf.adafactor:
@@ -326,7 +335,7 @@ def train(conf):
         tokenizer=tokenizer,
         dataset=train_ds,
         data_collator=collator,
-        optimizer=optimizer,
+        # optimizer=optimizer,
         lr_scheduler=scheduler
         )
     
@@ -337,15 +346,15 @@ def train(conf):
     #     "temperature":0.8,
     #     "max_new_tokens":max_new_tokens
     #     }
-    
+    max_new_tokens = 450
     generation_kwargs = {
-        # "min_length": -1,
+        "min_length": -1,
         "pad_to_multiple_of":16,
         "top_k": 0.0,
         "top_p": 1.0,
         "do_sample": True,
         "pad_token_id": tokenizer.pad_token_id,
-        "eos_token_id": 100_000,
+        # "eos_token_id": 100_000,
         "max_new_tokens": max_new_tokens,
     }
 
@@ -359,6 +368,7 @@ def train(conf):
     rewards = compute_reward_score(a,reward_tokenizer,base_reward_model,conf,batch_size=2)
     print(f'{"***"*10} printing reward for testing {"***"*10}')
     print([sigmoid(r) for r in rewards])
+    #tensor([0.0347], tensor([0.0747], tensor([0.1143], tensor([0.2480]
 
     print(f'{"==="*10} Starting ppo training')
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
@@ -382,7 +392,7 @@ def train(conf):
         ppo_trainer.accelerator.unwrap_model(base_model).gradient_checkpointing_enable()
             
         batch["response"] = tokenizer.batch_decode(response_tensors, skip_special_tokens=True)
-        texts = [q + r+'</s>' for q, r in zip(batch["query"], batch["response"])]
+        texts = [q[:-len("<|assistant|>")]+"<s><|assistant|>" +r+'</s>' for q, r in zip(batch["query"], batch["response"])]
         rewards = compute_reward_score(texts,reward_tokenizer,base_reward_model,conf)
 
         #Run PPO step

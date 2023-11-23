@@ -11,7 +11,7 @@ QA_SPECIAL_TOKENS = {
 RANDOM_SEED = 999
 CACHE_DIR="./cache"
 
-TOKENIZER_SEPECIAL_TOKENS= {"llama": {"pad_token": "</s>",
+TOKENIZER_SEPECIAL_TOKENS= {"llama": {"pad_token": "[PAD]",
                                       "eos_token": "</s>",
                                       "sep_token": "<s>",
                                       },

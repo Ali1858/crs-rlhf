@@ -30,13 +30,17 @@ def load_model(model_name, adapter_names, model_args, tokenizer_cache_dir='cache
     model_name =f'output/sft/{model_name}/merged/'
     adapter_mapping = {"ranking":"output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1/final_checkpoint",
                    "abs":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic/final_checkpoint",
-                   "abs_wgt_loss":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic_wgt_loss/final_checkpoint"}
+                   "abs_wgt_loss":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic_wgt_loss/final_checkpoint",
+                   "ranking2":"output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized/final_checkpoint"}
 
     base_model = transformers.AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=1, **model_args)
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, cache_dir=tokenizer_cache_dir,padding_side="left")
-    base_model.config.pad_token_id = base_model.config.eos_token_id
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, cache_dir=tokenizer_cache_dir)
 
+    print(f'tokenizer pad {tokenizer.pad_token} and model pad {base_model.config.pad_token_id}')
+    print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
+    if base_model.config.pad_token_id is None or base_model.config.pad_token_id == 0:
+        print('changing model pad token id')
+        base_model.config.pad_token_id = tokenizer.pad_token_id
     base_model = PeftModel.from_pretrained(
         base_model,
         adapter_mapping[adapter_names[0]],
@@ -143,9 +147,11 @@ def main():
     parser = argparse.ArgumentParser(description="Model evaluation script")
     parser.add_argument("--config_path", type=str, default='./config.yaml', help="Path to the configuration file")
     parser.add_argument("--dataset_name", type=str, default="eval_ranking_rm",help="Name of the dataset to load")
-    parser.add_argument("--model_name", type=str, default="LLama-2-7b_crs_oasst_sft_bs64_ep_1",help="Name of the model to load")
+    parser.add_argument("--model_name", type=str, default="LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token",help="Name of the model to load")
     parser.add_argument("--adapter_names", type=str, default="ranking,abs,abs_wgt_loss" ,help="List of adapter names to load")
     parser.add_argument("--load_4bit", action='store_true', help="Flag to load model in 4-bit format")
+    parser.add_argument("--load_8bit", action='store_true', help="Flag to load model in 4-bit format")
+
     args = parser.parse_args()
 
     adapter_names = args.adapter_names.split(',')
@@ -171,15 +177,13 @@ def main():
         "device_map": "auto"#{"":1},
     }
 
-    if args.load_4bit:
-        model_args["quantization_config"] = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-                )
-    else:
-         print('not using 4bit')
+    model_args["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=args.load_4bit,
+            load_in_8bit=args.load_8bit,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            )
 
     model, tokenizer = load_model(args.model_name,adapter_names, model_args)
 
@@ -196,7 +200,6 @@ def main():
 
     idx = 91
     data = eval_data[idx]
-    ranking_collate_fn
     inputs, _ = ranking_collate_fn([data])
     inputs = inputs.to(model.device)
     for adapter_name in adapter_names:
@@ -207,11 +210,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-batch = ranking_collate_fn.tokenizer.pad(
-            inputs,
-            padding=True,
-            max_length=2048,
-            pad_to_multiple_of=16,
-            return_tensors="pt",
-        )

@@ -71,6 +71,11 @@ def create_trainer(conf):
     special_tokens = TOKENIZER_SEPECIAL_TOKENS["llama"]
     train_ds , eval_ds = load_sft_dataset(conf,special_tokens["eos_token"])
     model, tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens)
+    print(f'tokenizer pad {tokenizer.pad_token} and model pad {model.config.pad_token_id}')
+    print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
+    if model.config.pad_token_id is None or model.config.pad_token_id == 0:
+        print('changing model pad token id')
+        model.config.pad_token_id = tokenizer.pad_token_id
     
     train_collate_fn = DialogueDataCollator(
         tokenizer,

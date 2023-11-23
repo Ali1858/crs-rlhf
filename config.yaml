@@ -52,6 +52,7 @@ pre_sft:
   train_batch: 4
   eval_batch: 4
   num_train_epochs: 1
+  int4_training: false
   gradient_accumulation_steps: 16
   eval_steps: 100
   save_steps: 300
@@ -73,10 +74,11 @@ sft:
   train_batch: 4
   eval_batch: 4
   num_train_epochs: 1
+  int4_training: false
   gradient_accumulation_steps: 16
   eval_steps: 50
   save_steps: 100
-  init_from_adapter: LLama-2-7b_pre_sft_bs64
+  init_from_adapter: LLama-2-7b_pre_sft_bs64_ep_1_not_quant_pad_token
   dataset:
     oasst_export:
         val_split: 0.05
@@ -89,12 +91,13 @@ rm:
   name: *rm_ranking_name
   base_model_name: *sft_model
   # base_model_name: meta-llama/Llama-2-13b-hf
-  is_abs_rm: true
-  adpater_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1
-  train_batch: 4
-  eval_batch: 4
+  is_abs_rm: false
+  int4_training: true
+  adpater_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
+  train_batch: 1
+  eval_batch: 1
   num_train_epochs: 1
-  gradient_accumulation_steps: 32
+  gradient_accumulation_steps: 64
   eval_steps: 25
   log_steps: 5
   save_steps: 400
@@ -102,33 +105,33 @@ rm:
     - accuracy
   max_replies: 4
   dataset:
-    # oasst_export:
-    #   val_split: 0.05
-    #   lang: "en,es,de,fr"
-    oasst_export_abs:
+    oasst_export:
       val_split: 0.05
       lang: "en,es,de,fr"
-      abs_oversample_threshold: 0.4
-      label_weight:
-        violence: 0
-        creativity: 0.15
-        helpfulness: 0.35
-        humor: 0
-        toxicity: -0.1
-        quality: 0.4
+    # oasst_export_abs:
+    #   val_split: 0.05
+    #   lang: "en,es,de,fr"
+    #   abs_oversample_threshold: 0.4
+    #   label_weight:
+    #     violence: 0
+    #     creativity: 0.15
+    #     helpfulness: 0.35
+    #     humor: 0
+    #     toxicity: -0.1
+    #     quality: 0.4
 
 rl:
   output_dir: output/rl
   name: *rl_fine_tune
   debug_set: 6
-  model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1
-  reward_model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1
+  model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
+  reward_model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
   crs: false
   crs_weight:
   adafactor: False
   load_reward_type: ranking #abs or ranking
-  abs_adapter_name: output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic
-  ranking_adapter_name: output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1
+  abs_adapter_name: #output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic
+  ranking_adapter_name: output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized
   seed: 999
   log_step: 5 # Step interval for logging.
   # eval_steps: 100
@@ -137,9 +140,9 @@ rl:
     steps: 20000 # Number of steps.
     learning_rate: 1.41e-5 #1.41e-5 # Learning rate for PPO.
     log_with: "wandb" # Logging method.
-    batch_size: 32 # Batch size.
+    batch_size: 16 # Batch size.
     mini_batch_size: 2 # Mini-batch size.
-    gradient_accumulation_steps: 16 # Gradient accumulation steps.
+    gradient_accumulation_steps: 8 # Gradient accumulation steps.
     early_stopping: False # Whether to use early stopping.
     target_kl: 0.1 # Target KL divergence.
     ppo_epochs: 4 # Number of epochs for PPO training.
