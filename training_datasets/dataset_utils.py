@@ -309,6 +309,10 @@ def get_rm_formatted(
         text,
         is_replies=False,
     ):
+        QA_SPECIAL_TOKENS["Question"] = "<|im_start|>user\n"
+        QA_SPECIAL_TOKENS["Answer"] = "<|im_start|>assistant\n"
+        eos_token = "<|im_end|>\n"
+
         if not is_replies:
             return [
                 "{}{}{}".format(QA_SPECIAL_TOKENS["Question" if i % 2 == 0 else "Answer"], text[i], eos_token)
@@ -316,13 +320,16 @@ def get_rm_formatted(
                 ]
         else:
             return "{}{}{}".format(QA_SPECIAL_TOKENS["Answer"], text, eos_token)
-        
+    
 
 def format_pairs(
     pairs,
     eos_token,
     add_initial_reply_token=False):
     assert isinstance(pairs, list)
+    QA_SPECIAL_TOKENS["Question"] = "<|im_start|>user\n"
+    QA_SPECIAL_TOKENS["Answer"] = "<|im_start|>assistant\n"
+    eos_token = "<|im_end|>\n"
     conversations = [
         "{}{}{}".format(QA_SPECIAL_TOKENS["Question" if i % 2 == 0 else "Answer"], pairs[i], eos_token)
         for i in range(len(pairs))

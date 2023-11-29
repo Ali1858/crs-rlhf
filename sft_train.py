@@ -55,6 +55,7 @@ def create_trainer(conf):
         gradient_accumulation_steps=conf.gradient_accumulation_steps,
         per_device_train_batch_size=conf.train_batch,
         per_device_eval_batch_size=conf.eval_batch,
+        adam_beta1=conf.adam_beta1,
         adam_beta2=conf.adam_beta2,
         weight_decay=conf.weight_decay,
         logging_steps=conf.log_steps,

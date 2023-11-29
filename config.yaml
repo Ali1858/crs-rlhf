@@ -10,8 +10,8 @@ default:
   ranking_rm: &rm_ranking_name LLama-2-7b_crs_oasst_sft_reward
   rl_fine_tune: &rl_fine_tune LLama-2-7b_crs_oasst_sft_rl
   gradient_checkpointing: true
-  adam_beta1:
-  adam_beta2: 0.999
+  adam_beta1: 0.9
+  adam_beta2: 0.95
   adam_epsilon:
   log_steps: 10
   eval_steps: 100
@@ -19,7 +19,7 @@ default:
   checkpoint_number: final_checkpoint
   adapter_number: final_checkpoint
   lr_scheduler_type: cosine
-  lr: 1e-4
+  lr: 5e-5 #1e-4
   warmup_ratio: 0.03
   weight_decay: 0.0
   max_grad_norm: 0.3
@@ -88,16 +88,17 @@ sft:
 
 rm:
   output_dir: output/rm
-  name: *rm_ranking_name
-  base_model_name: *sft_model
+  name: LLama-2-7b-oasst-baseline_reward #*rm_ranking_name
+  base_model_name: andreaskoepf/llama2-7b-oasst-baseline #*sft_model
   # base_model_name: meta-llama/Llama-2-13b-hf
   is_abs_rm: false
-  int4_training: true
-  adpater_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
-  train_batch: 1
-  eval_batch: 1
+  int4_training: false
+  int8_training: true
+  adpater_name: #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
+  train_batch: 2
+  eval_batch: 2
   num_train_epochs: 1
-  gradient_accumulation_steps: 64
+  gradient_accumulation_steps: 32
   eval_steps: 25
   log_steps: 5
   save_steps: 400
@@ -122,32 +123,35 @@ rm:
 
 rl:
   output_dir: output/rl
-  name: *rl_fine_tune
+  name: LLama-2-7b-oasst-baseline_rl #*rl_fine_tune
   debug_set: 6
-  model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
-  reward_model_name: output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
+  model_name: andreaskoepf/llama2-7b-oasst-baseline #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token/merged 
+  reward_model_name: andreaskoepf/llama2-7b-oasst-baseline #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token/merged
   crs: false
   crs_weight:
   adafactor: False
   load_reward_type: ranking #abs or ranking
   abs_adapter_name: #output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic
-  ranking_adapter_name: output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized
+  ranking_adapter_name: output/rm/LLama-2-7b-oasst-baseline_reward_ranking_bs64_ep_1_8bit_bf16 #LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized
   seed: 999
   log_step: 5 # Step interval for logging.
   # eval_steps: 100
   save_steps: 40
   ppo_config:
     steps: 20000 # Number of steps.
-    learning_rate: 1.41e-5 #1.41e-5 # Learning rate for PPO.
+    learning_rate: 5e-5 #1.41e-5 #1.4026e-5 # Learning rate for PPO. 1.0e-6 #
     log_with: "wandb" # Logging method.
     batch_size: 16 # Batch size.
     mini_batch_size: 2 # Mini-batch size.
     gradient_accumulation_steps: 8 # Gradient accumulation steps.
     early_stopping: False # Whether to use early stopping.
-    target_kl: 0.1 # Target KL divergence.
+    # target_kl: 0.1 
+    # Target KL divergence. Usefull for kl-coefficient. if kl is less than target kl then kl coefficient will also be less
+    target_kl: 1 # i think this is only usefull when earl stopping.
     ppo_epochs: 4 # Number of epochs for PPO training.
     seed: 90 # Random seed.
-    init_kl_coef: 0.2 # Initial KL coefficient.
+    # init_kl_coef: 0.1
+    init_kl_coef: 0.1 # Initial KL coefficient. Decide strength of KL penalty
     adap_kl_ctrl: True # Whether to adapt KL control.
   dataset:
     oasst_export:

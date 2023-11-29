@@ -18,11 +18,8 @@ from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer, set_se
 import numpy as np
 
 from training_datasets.dataset_utils import load_rl_dataset, format_pairs
-from utils import (parse_additional_args, print_yaml_config, 
-                   parse_arguments, init_or_resume_from,
-                    debug_configurations, save_trained_model)
+from utils import (parse_additional_args, print_yaml_config, parse_arguments, debug_configurations)
 from constants import TOKENIZER_SEPECIAL_TOKENS, DTYPES, CACHE_DIR
-from accelerate import Accelerator
 sigmoid = torch.nn.Sigmoid()
 
 import json
@@ -43,8 +40,11 @@ def generate_and_save_responses(ppo_trainer, eval_dataset, tokenizer, reward_mod
     decoded_responses = tokenizer.batch_decode(responses, skip_special_tokens=True)
     decoded_ref_response = tokenizer.batch_decode(ref_response_tensors, skip_special_tokens=True)
     
-    texts = [q + r + '</s>' for q, r in zip(eval_queries, decoded_responses)]
-    ref_texts = [q + r + '</s>' for q, r in zip(eval_queries, decoded_ref_response)]
+    # texts = [q + r + '</s>' for q, r in zip(eval_queries, decoded_responses)]
+    texts = [q[:-len("<|im_start|>assistant\n")]+"<|im_start|><|im_start|>assistant\n" +r+'<|im_end|>\n' for q, r in zip(eval_queries, decoded_responses)]
+
+    # ref_texts = [q + r + '</s>' for q, r in zip(eval_queries, decoded_ref_response)]
+    ref_texts = [q[:-len("<|im_start|>assistant\n")]+"<|im_start|><|im_start|>assistant\n" +r+'<|im_end|>\n' for q, r in zip(eval_queries, decoded_ref_response)]
 
     rewards = compute_reward_score(texts, reward_tokenizer,reward_model, conf)
     ref_rewards = compute_reward_score(ref_texts, reward_tokenizer,reward_model, conf)
@@ -129,7 +129,7 @@ def build_dataset(tokenizer,conf,seed=90,sample_train=True):
 
         if sample_train:
             train_ds = train_ds.shuffle(seed=seed)
-            sample_size = int(0.2 * len(train_ds))
+            sample_size = int(0.25 * len(train_ds))
             train_ds = train_ds.select(range(sample_size))
 
         eval_ds = eval_ds.map(
@@ -138,7 +138,7 @@ def build_dataset(tokenizer,conf,seed=90,sample_train=True):
             num_proc=20,
         )
         eval_ds.set_format(type="torch")
-        eval_ds = eval_ds.shuffle(seed=seed).select(range(20))
+        eval_ds = eval_ds.shuffle(seed=seed).select(range(10))
 
         print(f'Train dataset size: {len(train_ds)}')
         return train_ds,eval_ds
@@ -179,7 +179,7 @@ def get_base_model(conf,dtype,r=16,alpha=32):
     lora_config = LoraConfig(
         r=r,
         lora_alpha=alpha,
-        lora_dropout=0.1,
+        lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
     )
@@ -208,22 +208,16 @@ def get_base_model(conf,dtype,r=16,alpha=32):
 
 def get_reward_tokenizer_model(conf,dtype):
     print('**** loading reward model ****')
-    model_args = {
-        "torch_dtype": dtype,
-        "quantization_config": BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=dtype,
-            ),
-        "cache_dir": CACHE_DIR,
-    }
     # Since reward models are trained using the same base model, we should use same model
     base_reward_model = transformers.AutoModelForSequenceClassification.from_pretrained(
             conf.reward_model_name,
             num_labels=1,
+            use_flash_attention_2=True,
+            load_in_8bit=True,
             device_map="auto",
-            **model_args
-        )
+            torch_dtype=dtype,
+            cache_dir=CACHE_DIR,
+            )
     reward_tokenizer = transformers.AutoTokenizer.from_pretrained(conf.reward_model_name, cache_dir=CACHE_DIR)
     print(f'tokenizer pad {reward_tokenizer.pad_token} and model pad {base_reward_model.config.pad_token_id}')
     print(f'tokenizer eos {reward_tokenizer.eos_token} and model eos {reward_tokenizer.eos_token_id}')
@@ -293,12 +287,12 @@ def train(conf):
         seed=ppo_config["seed"],
         init_kl_coef=ppo_config["init_kl_coef"],
         adap_kl_ctrl=ppo_config["adap_kl_ctrl"],
-        tracker_project_name='rl',
+        tracker_project_name='oasst_rl',
         task_name=conf.name,
+        cliprange = 0.3,
+        cliprange_value = 0.3,
+        score_clip=4
     )
-
-    conf.model_name =  os.path.join(conf.model_name,'merged')
-    conf.reward_model_name =  os.path.join(conf.reward_model_name,'merged')
 
     assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
     dtype = DTYPES.get(conf.dtype, torch.float32)  
@@ -321,11 +315,14 @@ def train(conf):
         optimizer = Adam(
                 filter(lambda p: p.requires_grad, base_model.parameters()),
                 lr=config.learning_rate,
+                eps=1e-8,
+                weight_decay=1.0e-6,
+                betas=[0.9, 0.95]
             )
 
     T_max = floor(len(train_ds)/config.batch_size)
     print(f"T_max: {T_max}")
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=T_max, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=2000, eta_min=1.0e-6)#1.389e-5)
 
 
     ppo_trainer = PPOTrainer(
@@ -335,7 +332,7 @@ def train(conf):
         tokenizer=tokenizer,
         dataset=train_ds,
         data_collator=collator,
-        # optimizer=optimizer,
+        optimizer=optimizer,
         lr_scheduler=scheduler
         )
     
@@ -346,7 +343,7 @@ def train(conf):
     #     "temperature":0.8,
     #     "max_new_tokens":max_new_tokens
     #     }
-    max_new_tokens = 450
+    max_new_tokens = 512
     generation_kwargs = {
         "min_length": -1,
         "pad_to_multiple_of":16,
@@ -354,29 +351,33 @@ def train(conf):
         "top_p": 1.0,
         "do_sample": True,
         "pad_token_id": tokenizer.pad_token_id,
-        # "eos_token_id": 100_000,
+        "eos_token_id": tokenizer.eos_token_id,#,100_000,
         "max_new_tokens": max_new_tokens,
     }
 
     save_dir =  os.path.join(conf.output_dir, conf.name)
 
-    a = ["<|prompter|>Hi how are you?</s><s><|assistant|>I am good you piece of shit</s>",
-    "<|prompter|>Hi how are you?</s><s><|assistant|>Giberish, Giberish saying Giberish, tell Giberish is not Giberish. Why are Giberish you Giberish.</s>",
-    "<|prompter|>Hi how are you?</s><s><|assistant|>I am good.</s>",
-    "<|prompter|>Hi how are you?</s><s><|assistant|>I am good, how are you doing? Please tell me how can I help you?</s>"]
+    a = ["<|im_start|>user\nHi how are you?<|im_end|>\n<|im_start|><|im_start|>assistant\nI am good you piece of shit<|im_end|>\n",
+    "<|im_start|>user\nHi how are you?<|im_end|>\n<|im_start|><|im_start|>assistant\nGiberish, Giberish saying Giberish, tell Giberish is not Giberish. Why are Giberish you Giberish.<|im_end|>\n",
+    "<|im_start|>user\nHi how are you?<|im_end|>\n<|im_start|><|im_start|>assistant\nI am good.<|im_end|>\n",
+    "<|im_start|>user\nHi how are you?<|im_end|>\n<|im_start|><|im_start|>assistant\nI am good, how are you doing? Please tell me how can I help you?<|im_end|>\n"]
 
     rewards = compute_reward_score(a,reward_tokenizer,base_reward_model,conf,batch_size=2)
     print(f'{"***"*10} printing reward for testing {"***"*10}')
     print([sigmoid(r) for r in rewards])
     #tensor([0.0347], tensor([0.0747], tensor([0.1143], tensor([0.2480]
+    #tensor([0.0815], tensor([0.0194], tensor([0.0427], tensor([0.4609]
 
     print(f'{"==="*10} Starting ppo training')
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         print(f'{"==="*10} running for step {epoch}')
         query_tensor = batch["input_ids"]
         
+        # Inference mode
         ppo_trainer.accelerator.unwrap_model(base_model).gradient_checkpointing_disable()
-        if epoch % 25 == 0:
+        ppo_trainer.accelerator.unwrap_model(base_model).config.use_cache = True
+        base_model.eval()
+        if epoch % 75 ==0 and epoch != 0:
             generate_and_save_responses(ppo_trainer, eval_ds, tokenizer, base_reward_model, reward_tokenizer, conf, epoch, save_dir, generation_kwargs)
         print_len(query_tensor,epoch,'query')
         start_time = time()
@@ -389,10 +390,15 @@ def train(conf):
         end_time = time()
         print(f'*** {end_time-start_time} seconds taken to generated response at step {epoch} ***')
         print_len(response_tensors,epoch,'response')
+
+        # Training mode
         ppo_trainer.accelerator.unwrap_model(base_model).gradient_checkpointing_enable()
+        ppo_trainer.accelerator.unwrap_model(base_model).config.use_cache = False
+        base_model.train()
             
         batch["response"] = tokenizer.batch_decode(response_tensors, skip_special_tokens=True)
-        texts = [q[:-len("<|assistant|>")]+"<s><|assistant|>" +r+'</s>' for q, r in zip(batch["query"], batch["response"])]
+        # texts = [q[:-len("<|assistant|>")]+"<s><|assistant|>" +r+'</s>' for q, r in zip(batch["query"], batch["response"])]
+        texts = [q[:-len("<|im_start|>assistant\n")]+"<|im_start|><|im_start|>assistant\n" +r+"<|im_end|>\n" for q, r in zip(batch["query"], batch["response"])]
         rewards = compute_reward_score(texts,reward_tokenizer,base_reward_model,conf)
 
         #Run PPO step

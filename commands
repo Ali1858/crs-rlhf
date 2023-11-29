@@ -51,9 +51,9 @@ accelerate launch --config_file accelerate_config.yaml rl_train.py --config_subs
 # accelerate configuration saved at /home/alikhan/.cache/huggingface/accelerate/default_config.yaml          
 accelerate launch --multi_gpu --num_machines 1 --num_processes 2 rl_train.py --config_subset  rl --name_suffix _bs16_qlora
 
-python sft_train.py --config_subset  sft --name_suffix _bs64_ep_1_not_quant_pad_token
+python sft_train.py --config_subset  sft --name_suffix _bs64_ep_1_presft_no_quant_with_pad_token_fb16
 
-
+python rm_train.py --config_subset  rm --name_suffix _bs64_ep_1_8bit_bf16
 # v2
         # violence: 0
         # creativity: 0.15
@@ -75,3 +75,4 @@ python sft_train.py --config_subset  sft --name_suffix _bs64_ep_1_not_quant_pad_
         # humor: 0.167
         # non toxicity: 0.167
         # quality: 0.165
+python rl_train.py --config_subset  rl --name_suffix _bs16_kl_02_clip_02_512_max_token_with_pad_eos

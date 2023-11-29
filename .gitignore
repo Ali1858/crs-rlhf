@@ -13,3 +13,5 @@ output
 brad_ppo.py
 eval report.txt
 trlx_ppo.py
+gpt_x_neo.py
+model_training/trlx_trainer.py

@@ -27,11 +27,14 @@ def load_dataset(config):
 
 
 def load_model(model_name, adapter_names, model_args, tokenizer_cache_dir='cache'):
-    model_name =f'output/sft/{model_name}/merged/'
-    adapter_mapping = {"ranking":"output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1/final_checkpoint",
-                   "abs":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic/final_checkpoint",
-                   "abs_wgt_loss":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic_wgt_loss/final_checkpoint",
-                   "ranking2":"output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized/final_checkpoint"}
+    # model_name =f'output/sft/{model_name}/merged/'
+    adapter_mapping = {"ranking":"output/rm/LLama-2-7b-oasst-baseline_reward_ranking_bs64_ep_1_8bit_bf16/final_checkpoint"}
+
+    
+    # {"ranking":"output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1/final_checkpoint",
+    #                "abs":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic/final_checkpoint",
+    #                "abs_wgt_loss":"output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic_wgt_loss/final_checkpoint",
+    #                "ranking2":"output/rm/LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized/final_checkpoint"}
 
     base_model = transformers.AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=1, **model_args)
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, cache_dir=tokenizer_cache_dir)
@@ -147,7 +150,7 @@ def main():
     parser = argparse.ArgumentParser(description="Model evaluation script")
     parser.add_argument("--config_path", type=str, default='./config.yaml', help="Path to the configuration file")
     parser.add_argument("--dataset_name", type=str, default="eval_ranking_rm",help="Name of the dataset to load")
-    parser.add_argument("--model_name", type=str, default="LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token",help="Name of the model to load")
+    parser.add_argument("--model_name", type=str, default="andreaskoepf/llama2-7b-oasst-baseline",help="Name of the model to load")
     parser.add_argument("--adapter_names", type=str, default="ranking,abs,abs_wgt_loss" ,help="List of adapter names to load")
     parser.add_argument("--load_4bit", action='store_true', help="Flag to load model in 4-bit format")
     parser.add_argument("--load_8bit", action='store_true', help="Flag to load model in 4-bit format")
@@ -172,18 +175,20 @@ def main():
     eval_data = Subset(eval_data, range(200))
 
     model_args = {
+        "use_flash_attention_2":True,
+        "load_in_8bit": True,
         "torch_dtype": torch.bfloat16,
         "cache_dir": 'cache',
         "device_map": "auto"#{"":1},
     }
 
-    model_args["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=args.load_4bit,
-            load_in_8bit=args.load_8bit,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            )
+    # model_args["quantization_config"] = BitsAndBytesConfig(
+    #         load_in_4bit=args.load_4bit,
+    #         load_in_8bit=args.load_8bit,
+    #         bnb_4bit_quant_type="nf4",
+    #         bnb_4bit_compute_dtype=torch.bfloat16,
+    #         bnb_4bit_use_double_quant=True,
+    #         )
 
     model, tokenizer = load_model(args.model_name,adapter_names, model_args)
 

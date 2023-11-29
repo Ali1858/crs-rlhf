@@ -53,7 +53,7 @@ def get_peft_config(reward_model,r=64,alpha=16):
         base_config = {
             'r': r,
             'lora_alpha': alpha,
-            'lora_dropout': 0.1,
+            'lora_dropout': 0.05,
             'bias': 'none',
             'inference_mode': False,
             'target_modules': 'all'
@@ -89,7 +89,8 @@ def load_base_model(device, config, reward_model):
         "torch_dtype": bnb_config.bnb_4bit_compute_dtype,
         "quantization_config": bnb_config,
         "cache_dir": CACHE_DIR,
-        "device_map": device
+        "device_map": device,
+        "use_flash_attention_2": True
     }
 
     if reward_model:
