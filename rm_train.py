@@ -1,13 +1,14 @@
 import os
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-
+import pandas as pd
 import torch
 from torch.utils.data import ConcatDataset
 from transformers import TrainingArguments, EarlyStoppingCallback
 from transformers.training_args import OptimizerNames
 import wandb
 
+from torch.utils.data import Dataset
 from training_datasets.dataset_utils import load_rm_dataset
 from training_datasets.collators import RankingDataCollator, AbsoluteScoreDataCollator
 from model_training.trainers import RMTrainer, AbsRMTrainer
@@ -44,12 +45,40 @@ def ranking_reward_accuracy(eval_pred):
 def abs_reward_metrics(eval_pred):
     predictions, labels = eval_pred
     predictions = predictions.squeeze()
+
+    l40,p40 = [], []
+    l_,p_ = [], []
+    for l, p in zip(labels,predictions):
+        if l <= 0.4:
+            l40.append(l)
+            p40.append(p)
+        elif l > 0.4:
+            l_.append(l)
+            p_.append(p)
+
     return {
         'mse': mean_squared_error(labels, predictions),
-        'mae': mean_absolute_error(labels, predictions)
+        'mae': mean_absolute_error(labels, predictions),
+        'below_04_mse': mean_squared_error(l40, p40),
+        'below_04_mae': mean_absolute_error(l40, p40),
+        'above_04_mse': mean_squared_error(l_, p_),
+        'above_04_mae': mean_absolute_error(l_, p_)
     }
 
+class CustomDataset(Dataset):
+    def __init__(self, data):
+        self.data = data
 
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        message = self.data[idx][0]
+        reply = self.data[idx][1]
+        score = self.data[idx][2]
+        return message, reply, score
+
+from torch.utils.data import TensorDataset, ConcatDataset
 def create_trainer(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
@@ -93,12 +122,21 @@ def create_trainer(conf):
     merge_and_save_peft_model(conf)
     train_ds , eval_ds = load_rm_dataset(conf)
     model,tokenizer = get_model_and_tokenizer(device_map,conf,special_tokens, need_embedding_resize=False,reward_model=True)
+    print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
+    print(f'tokenizer pad {tokenizer.pad_token} and model pad {tokenizer.pad_token_id}')
+    print(f'tokenizer pad {tokenizer.sep_token} and model pad {tokenizer.sep_token_id}')
+    print("add_special_tokens")
+    tokenizer.add_special_tokens({"pad_token":"<PAD>","eos_token":"<|im_end|>","sep_token":"<SEP>"})
     print(f'tokenizer pad {tokenizer.pad_token} and model pad {model.config.pad_token_id}')
     print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
     if model.config.pad_token_id is None or model.config.pad_token_id == 0:
         print('changing model pad token id')
         model.config.pad_token_id = tokenizer.pad_token_id
     if conf.is_abs_rm:
+        aug_ds = pd.read_csv('rm_augmented.csv')
+        aug_list = aug_ds.values.tolist()
+        aug_dataset = CustomDataset(aug_list)
+        train_ds = ConcatDataset([train_ds, aug_dataset])
         from functools import partial
         scores = []
         abs_oversample_threshold = conf.dataset["oasst_export_abs"]["abs_oversample_threshold"]

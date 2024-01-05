@@ -76,3 +76,5 @@ python rm_train.py --config_subset  rm --name_suffix _bs64_ep_1_8bit_bf16
         # non toxicity: 0.167
         # quality: 0.165
 python rl_train.py --config_subset  rl --name_suffix _bs16_kl_02_clip_02_512_max_token_with_pad_eos
+
+python evaluations.rl_get_prediction.py --config_subset rl

@@ -6,10 +6,11 @@ from typing import List
 from collections import defaultdict
 import numpy as np
 import re
-
+import pandas as pd
 from torch.utils.data import Dataset, random_split
 from datasets import load_dataset
 from torch import Generator
+from sklearn.utils import resample
 
 from training_datasets.dataset_utils import load_oasst, ListDataset
 from constants import QA_SPECIAL_TOKENS
@@ -200,6 +201,7 @@ class AbsoluteRMDataset(Dataset):
         oversample_data = []
         none_count = 0
         skip_count = 0
+        skip_count_neg = 0
         desired_labels = ["violence","creativity","helpfulness","humor","toxicity","quality"]
         print(label_weight)
 
@@ -227,27 +229,91 @@ class AbsoluteRMDataset(Dataset):
                         raise ValueError("Sum of label weight is not equal one")
 
                     reward_score = sum(labels[label] * label_weight[label] for label in labels)
-                    if r_idx == 0:
-                        self.data.append((message,reply_text,reward_score))
-                        first_score = reward_score
-                    elif reward_score >= 0.6 and abs(first_score-reward_score) >= 0.05:
-                        self.data.append((message,reply_text,reward_score))
-                    elif reward_score < 0.6:
-                        self.data.append((message,reply_text,reward_score))
-                    else:
-                        skip_count +=1
+                    if reward_score < 0:
+                        skip_count_neg += 1
+                        continue
 
-                    if abs_oversample_threshold and reward_score <= abs_oversample_threshold:
-                        oversample_data.append((message,reply_text,reward_score))
+                    self.data.append((message,reply_text,reward_score))
+
+                    # if r_idx == 0:
+                    #     self.data.append((message,reply_text,reward_score))
+                    #     first_score = reward_score
+                    # elif reward_score >= 0.6 and abs(first_score-reward_score) >= 0.05:
+                    #     self.data.append((message,reply_text,reward_score))
+                    # elif reward_score < 0.6:
+                    #     self.data.append((message,reply_text,reward_score))
+                    # else:
+                    #     skip_count +=1
+
+                    # if abs_oversample_threshold and reward_score <= abs_oversample_threshold:
+                    #     oversample_data.append((message,reply_text,reward_score))
+        # Create a DataFrame
+        df = pd.DataFrame(self.data, columns=["message", "reply", "score"])
         print(f'{"==="*10} total {none_count} has None value for atleast 1 label')
-        print(f'{"==="*10} total {skip_count} has been skipped because low difference threshold')
+        # print(f'{"==="*10} total {skip_count} has been skipped because low difference threshold')
+        print(f'{"==="*10} total {skip_count_neg} has been skipped because reward is negative')
 
         if split == 'train' and abs_oversample_threshold:
-            print(f'{"==="*10} Oversample count {len(oversample_data)}')
-            self.data.extend(oversample_data)
+            # print(f'{"==="*10} Oversample count {len(oversample_data)}')
+            # self.data.extend(oversample_data)
+            self.data = self.oversampling(df,abs_oversample_threshold)
 
     def __len__(self):
         return len(self.data)
+    
+
+    def oversampling(self, df,lower_threshold):
+        high_threshold = 0.9
+        # Separate the dataset into three groups
+        low_score_df = df[df['score'] <= lower_threshold]
+        print(f'size of low score df: {low_score_df.shape}')
+        
+        high_score_df = df[df['score'] >= high_threshold]
+        print(f'size of high score df: {high_score_df.shape}')
+        
+        mid_score_df = df[(df['score'] > lower_threshold) & (df['score'] < high_threshold)]
+        print(f'size of mid score df: {mid_score_df.shape}')
+
+        # Oversample the low scores
+        low_score_oversampled = low_score_df
+        # resample(low_score_df,
+        #                          replace=True,      # sample with replacement
+        #                          n_samples=int(low_score_df.shape[0]*2),    # to match desired count
+        #                          random_state=123)  # for reproducibility
+        print(f'size of low score df after sampling: {low_score_oversampled.shape}')
+        
+        # Stratified undersampling for mid-range scores
+        step = 0.1
+        bins = [round(i, 2)/10 for i in range(int(lower_threshold * 10), int(high_threshold * 10) + 1, int(step * 10))]
+        print(f'bins for mid score sampling {bins}')
+
+        mid_score_stratified = pd.DataFrame()
+        
+        for i in range(len(bins)-1):
+            bin_df = mid_score_df[(mid_score_df['score'] > bins[i]) & (mid_score_df['score'] <= bins[i+1])]
+            sampled_bin_df = resample(bin_df,
+                              replace=False,    # sample without replacement
+                              n_samples=int(8000/(len(bins)-1)), # evenly distribute samples
+                              random_state=123) # for reproducibility
+            mid_score_stratified = pd.concat([mid_score_stratified, sampled_bin_df])
+        print(f'size of mid score df after sampling: {mid_score_stratified.shape}')
+
+        high_score_undersample_df = high_score_df
+        # resample(high_score_df,
+        #                                      replace=False, 
+        #                                      n_samples=7000,
+        #                                      random_state=123)  # for reproducibility
+        print(f'size of high score df after sampling: {high_score_undersample_df.shape}')
+
+
+        # Combine oversampled, stratified undersampled, and high score data
+        balanced_df = pd.concat([low_score_oversampled, mid_score_stratified, high_score_undersample_df])
+        print(f'size of final df after sampling: {balanced_df.shape}')
+        
+        # Shuffle the combined dataset
+        balanced_df = balanced_df.sample(frac=1, random_state=123).reset_index(drop=True)
+        return balanced_df.values.tolist()
+
 
     def __getitem__(self, index):
         prefix, reply,reward_score = self.data[index]

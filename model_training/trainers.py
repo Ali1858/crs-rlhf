@@ -198,12 +198,17 @@ class AbsRMTrainer(Trainer):
     def __init__(self, model, args, train_collate_fn,loss_wgt_and_threshold,**kwargs):
         super().__init__(model=model,args=args,**kwargs)
         self.train_collate_fn = train_collate_fn
-        # self.loss_fct = nn.MSELoss(reduction="none")
-        self.loss_fct = nn.BCELoss(reduction="none")
+        # choose either mse or bce
+        self.loss_fct = nn.MSELoss(reduction="none")
+        # self.loss_fct = nn.BCELoss(reduction="none")
         self.sigmoid = nn.Sigmoid()
+        if self.sigmoid:
+            print('Using sigmoid layer to contrain the prediction')
         self.loss_weight,self.loss_threshold = loss_wgt_and_threshold
-        print(f'The weight for under represented labels is {self.loss_weight} and threshold is {self.loss_threshold}')
-        self.loss_weight = 1.2 #self.loss_weight * 0.5
+        print(f'*** The weight for under represented labels is {self.loss_weight} and threshold is {self.loss_threshold} ***')
+        self.loss_weight = self.loss_weight * 0.75
+        print(f'New loss weight: {self.loss_weight}')
+        self.penalty_value = 0.02
 
     def compute_loss(self, model, inputs, return_logits=False):
         labels = inputs.pop("labels")
@@ -211,12 +216,29 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        pred = self.sigmoid(logits)
+        if self.sigmoid:
+            pred = self.sigmoid(logits)
+        else:
+            pred = logits
+            # Penalty for predicting value above 1 and below 0
+            penalty = torch.where(pred.view(-1) < 0, -pred.view(-1), torch.zeros_like(pred.view(-1)))
+            penalty += torch.where(pred.view(-1) > 1, pred.view(-1) - 1, torch.zeros_like(pred.view(-1)))
+            penalty *= self.penalty_value
+
+        # Weights for under represented samples
         weights = torch.ones_like(labels)
         weights[labels <= self.loss_threshold] = self.loss_weight 
+        # weights[labels >= 0.9] = 1.4#self.loss_weight 
         
-        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
-        loss = (loss * weights).mean()
+        # Base loss calculation
+        base_loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
+        # weighted loss + penalty
+        weighted_loss = (base_loss * weights)
+        if self.sigmoid:
+            total_loss = weighted_loss
+        else:
+            total_loss = weighted_loss + penalty
+        loss = total_loss.mean()
         return (loss, logits) if return_logits else loss
     
 
@@ -227,12 +249,30 @@ class AbsRMTrainer(Trainer):
               attention_mask=inputs["attention_mask"],
               use_cache=False,
               ).logits
-        pred = self.sigmoid(logits)
-        weights = torch.ones_like(labels)
-        weights[labels <= self.loss_threshold] = self.loss_weight 
+        if self.sigmoid:
+            pred = self.sigmoid(logits)
+        else:
+            pred = logits
+            # Penalty for predicting value above 1 and below 0
+            penalty = torch.where(pred.view(-1) < 0, -pred.view(-1), torch.zeros_like(pred.view(-1)))
+            penalty += torch.where(pred.view(-1) > 1, pred.view(-1) - 1, torch.zeros_like(pred.view(-1)))
+            penalty *= self.penalty_value
 
-        loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
-        loss = (loss * weights).mean()
+        # Weights for under represented samples
+        weights = torch.ones_like(labels)
+        weights[labels <= self.loss_threshold] = self.loss_weight
+        # weights[labels >= 0.9] = 1.4#self.loss_weight 
+ 
+
+        # Base loss calculation
+        base_loss = self.loss_fct(pred.view(-1).float(), labels.view(-1).float())
+        # weighted loss + penalty
+        weighted_loss = (base_loss * weights)
+        if self.sigmoid:
+            total_loss = weighted_loss
+        else:
+            total_loss = weighted_loss + penalty
+        loss = total_loss.mean()
         return loss, pred, labels
     
     

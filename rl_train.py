@@ -92,8 +92,21 @@ def compute_reward_score(texts,reward_tokenizer,base_reward_model,conf,batch_siz
                     rewards.append((weight * sigmoid(rank)) + ((1-weight) * sigmoid(abs)))
             else:
                 logits = base_reward_model(**batch).logits[:,0]
+                # if conf.load_reward_type == "abs":
+                    # sig_scores = sigmoid(logits)
+                    # sig_scores =  [torch.clamp(score-0.1, min=0)+0.000001 if score < 0.46 else score for score in sig_scores]
+                    # logits = sigmoid_inverse(sig_scores)
                 rewards.extend(logits)
+
     return rewards
+
+
+def sigmoid_inverse(sig_scores):
+    logits = []
+    for score in sig_scores:
+        logit = torch.log(score / (1 - score))
+        logits.append(logit)
+    return logits
 
 
 def collator(data):
@@ -129,7 +142,7 @@ def build_dataset(tokenizer,conf,seed=90,sample_train=True):
 
         if sample_train:
             train_ds = train_ds.shuffle(seed=seed)
-            sample_size = int(0.25 * len(train_ds))
+            sample_size = int(0.375 * len(train_ds)) #0.375
             train_ds = train_ds.select(range(sample_size))
 
         eval_ds = eval_ds.map(
@@ -198,7 +211,8 @@ def get_base_model(conf,dtype,r=16,alpha=32):
     base_model.print_trainable_parameters()
 
     base_model = AutoModelForCausalLMWithValueHead.from_pretrained(base_model)
-    tokenizer = transformers.AutoTokenizer.from_pretrained(conf.model_name, cache_dir=CACHE_DIR)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(conf.model_name, cache_dir=CACHE_DIR)    
+    tokenizer.add_special_tokens({"pad_token":"<PAD>","eos_token":"<|im_end|>","sep_token":"<SEP>"})
     print(f'tokenizer pad {tokenizer.pad_token} and model pad {base_model.config.pad_token_id}')
     print(f'tokenizer eos {tokenizer.eos_token} and model eos {tokenizer.eos_token_id}')
     if base_model.config.pad_token_id is None or base_model.config.pad_token_id == 0:
@@ -206,7 +220,7 @@ def get_base_model(conf,dtype,r=16,alpha=32):
         base_model.config.pad_token_id = tokenizer.pad_token_id
     return base_model, tokenizer
 
-def get_reward_tokenizer_model(conf,dtype):
+def get_reward_tokenizer_model(conf,dtype,device_map="auto"):
     print('**** loading reward model ****')
     # Since reward models are trained using the same base model, we should use same model
     base_reward_model = transformers.AutoModelForSequenceClassification.from_pretrained(
@@ -214,11 +228,12 @@ def get_reward_tokenizer_model(conf,dtype):
             num_labels=1,
             use_flash_attention_2=True,
             load_in_8bit=True,
-            device_map="auto",
+            device_map=device_map,
             torch_dtype=dtype,
             cache_dir=CACHE_DIR,
             )
     reward_tokenizer = transformers.AutoTokenizer.from_pretrained(conf.reward_model_name, cache_dir=CACHE_DIR)
+    reward_tokenizer.add_special_tokens({"pad_token":"<PAD>","eos_token":"<|im_end|>","sep_token":"<SEP>"})
     print(f'tokenizer pad {reward_tokenizer.pad_token} and model pad {base_reward_model.config.pad_token_id}')
     print(f'tokenizer eos {reward_tokenizer.eos_token} and model eos {reward_tokenizer.eos_token_id}')
     if base_reward_model.config.pad_token_id is None or base_reward_model.config.pad_token_id == 0:
@@ -230,7 +245,8 @@ def get_reward_tokenizer_model(conf,dtype):
         assert conf.ranking_adapter_name, "Please specify adapter name of ranking reward model"
         conf.abs_model_name =  os.path.join(conf.abs_adapter_name,conf.adapter_number)
         conf.ranking_model_name = os.path.join(conf.ranking_adapter_name,conf.adapter_number)
-        
+        print(conf.ranking_model_name),
+        print(conf.abs_model_name)
         base_reward_model = PeftModel.from_pretrained(
             base_reward_model,
             conf.ranking_model_name,
@@ -248,7 +264,7 @@ def get_reward_tokenizer_model(conf,dtype):
             reward_model_path =  os.path.join(conf.ranking_adapter_name,conf.adapter_number)
         else:
             raise "Please choose atleast one remodel type. From the following choice ['abs', 'ranking']"
-        
+        print(reward_model_path)
         base_reward_model = PeftModel.from_pretrained(
             base_reward_model,
             reward_model_path,
@@ -289,15 +305,17 @@ def train(conf):
         adap_kl_ctrl=ppo_config["adap_kl_ctrl"],
         tracker_project_name='oasst_rl',
         task_name=conf.name,
-        cliprange = 0.3,
-        cliprange_value = 0.3,
-        score_clip=4
+        score_clip=4,
+        tracker_kwargs={"name":conf.name},
+        cliprange_value=0.4,
+        cliprange=0.4
     )
 
     assert "llama" in conf.model_name.lower(), "Currently only llama model supported"
     dtype = DTYPES.get(conf.dtype, torch.float32)  
     
-    base_model,tokenizer = get_base_model(conf,dtype)
+    base_model,tokenizer = get_base_model(conf,dtype)#,r=32,alpha=64)
+
     base_reward_model,reward_tokenizer = get_reward_tokenizer_model(conf,dtype)
     train_ds,eval_ds = build_dataset(tokenizer,conf)
 
@@ -322,7 +340,7 @@ def train(conf):
 
     T_max = floor(len(train_ds)/config.batch_size)
     print(f"T_max: {T_max}")
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=2000, eta_min=1.0e-6)#1.389e-5)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=T_max*3, eta_min=1.0e-6)#1.389e-5)
 
 
     ppo_trainer = PPOTrainer(
@@ -333,7 +351,7 @@ def train(conf):
         dataset=train_ds,
         data_collator=collator,
         optimizer=optimizer,
-        lr_scheduler=scheduler
+        # lr_scheduler=scheduler
         )
     
     # generation_kwargs = {
@@ -345,7 +363,7 @@ def train(conf):
     #     }
     max_new_tokens = 512
     generation_kwargs = {
-        "min_length": -1,
+        # "min_length": -1,
         "pad_to_multiple_of":16,
         "top_k": 0.0,
         "top_p": 1.0,
@@ -365,6 +383,7 @@ def train(conf):
     rewards = compute_reward_score(a,reward_tokenizer,base_reward_model,conf,batch_size=2)
     print(f'{"***"*10} printing reward for testing {"***"*10}')
     print([sigmoid(r) for r in rewards])
+    print(rewards)
     #tensor([0.0347], tensor([0.0747], tensor([0.1143], tensor([0.2480]
     #tensor([0.0815], tensor([0.0194], tensor([0.0427], tensor([0.4609]
 
