@@ -89,14 +89,15 @@ def compute_reward_score(texts,reward_tokenizer,base_reward_model,conf,batch_siz
                 abs_reward.extend(abs_logits)
 
                 for rank,abs in zip(rank_reward,abs_reward):
-                    rewards.append((weight * sigmoid(rank)) + ((1-weight) * sigmoid(abs)))
+                    rewards.append((weight * rank) + ((1-weight) * abs))
             else:
-                logits = base_reward_model(**batch).logits[:,0]
-                # if conf.load_reward_type == "abs":
-                    # sig_scores = sigmoid(logits)
-                    # sig_scores =  [torch.clamp(score-0.1, min=0)+0.000001 if score < 0.46 else score for score in sig_scores]
-                    # logits = sigmoid_inverse(sig_scores)
-                rewards.extend(logits)
+                pass
+                # logits = base_reward_model(**batch).logits[:,0]
+                # # if conf.load_reward_type == "abs":
+                #     # sig_scores = sigmoid(logits)
+                #     # sig_scores =  [torch.clamp(score-0.1, min=0)+0.000001 if score < 0.46 else score for score in sig_scores]
+                #     # logits = sigmoid_inverse(sig_scores)
+                # rewards.extend(logits)
 
     return rewards
 
@@ -197,6 +198,15 @@ def get_base_model(conf,dtype,r=16,alpha=32):
         task_type="CAUSAL_LM",
     )
     device_map = get_base_model_device_map(conf.model_name,dtype)
+    device_map = {'model.embed_tokens': 0, 'model.layers.0': 0, 'model.layers.1': 0, 'model.layers.2': 0, 'model.layers.3': 0,
+                'model.layers.4': 0, 'model.layers.5': 0, 'model.layers.6': 0, 'model.layers.7': 0, 'model.layers.8': 0,
+                'model.layers.9': 0, 'model.layers.10': 0, 'model.layers.11': 1, 'model.layers.12': 1, 'model.layers.13': 1,
+                'model.layers.14': 1, 'model.layers.15': 1, 'model.layers.16': 1, 'model.layers.17': 1, 'model.layers.18': 1,
+                'model.layers.19': 1, 'model.layers.20': 1, 'model.layers.21': 1, 'model.layers.22': 1, 'model.layers.23': 1,
+                'model.layers.24': 1, 'model.layers.25': 1, 'model.layers.26': 1, 'model.layers.27': 1, 'model.layers.28': 1,
+                'model.layers.29': 1, 'model.layers.30': 1, 'model.layers.31': 1, 'model.norm': 1, 'lm_head': 0}
+
+
     base_model = transformers.AutoModelForCausalLM.from_pretrained(
         conf.model_name,
         use_flash_attention_2=True,
@@ -254,6 +264,7 @@ def get_reward_tokenizer_model(conf,dtype,device_map="auto"):
             is_trainable=False
             )
         base_reward_model.load_adapter(conf.abs_model_name,adapter_name="abs",is_trainable=False)
+        base_reward_model = base_reward_model.to(base_reward_model.device)
     else:
         print('Not using combined reward signal')
         if conf.load_reward_type == "abs":
@@ -283,7 +294,6 @@ def print_len(tensor,step, tname):
 def train(conf):
     print(f"\n{'==='*10} Following are the configuration for training{'==='*10}")
     print_yaml_config(conf)
-
     set_seed(conf.seed)
 
     ppo_config = conf.ppo_config
@@ -316,7 +326,7 @@ def train(conf):
     
     base_model,tokenizer = get_base_model(conf,dtype)#,r=32,alpha=64)
 
-    base_reward_model,reward_tokenizer = get_reward_tokenizer_model(conf,dtype)
+    base_reward_model,reward_tokenizer = get_reward_tokenizer_model(conf,dtype,device_map={"":0})
     train_ds,eval_ds = build_dataset(tokenizer,conf)
 
     if conf.adafactor:

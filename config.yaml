@@ -125,18 +125,19 @@ rl:
   output_dir: output/rl
   name: LLama-2-7b-oasst-baseline_rl #*rl_fine_tune
   debug_set: 6
-  eval_sft: True
-  eval_data: data/eval_final.json
-  peft_id: output/rl/LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits #_adjusted 
-  # output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5
-  # output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5 
-  output_json_prefix: eval_final
+  # eval_sft: False
+  # eval_data: data/eval_extra.json
+  # peft_id: output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5
+  # # output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5
+  # # output/rl/LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits #_adjusted 
+  # # output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5 
+  # output_json_prefix: eval_extra
   model_name: andreaskoepf/llama2-7b-oasst-baseline #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token/merged 
   reward_model_name: andreaskoepf/llama2-7b-oasst-baseline #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token/merged
-  crs: false
-  crs_weight:
+  crs: true
+  crs_weight: 0.25
   adafactor: False
-  load_reward_type: abs #abs or ranking
+  load_reward_type: #ranking #abs or ranking
   # abs_adapter_name: output/rm/LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic #output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic
   abs_adapter_name: output/rm/LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic_s_075_augment_and__under
   #output/rm/LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic_wgt_loss_075_strength_only_quality_eos_token

@@ -170,9 +170,9 @@ def augment(model_name,conf):
         for p,r,og_r,og_s in zip(new_examples["original_prefix"],decoded_responses,new_examples["original_reply"],new_examples["orginal_scores"]):
             data.append([p,r,og_r,og_s])
         df = pd.DataFrame(data, columns=["message", "reply","original_reply","original_score"])
-        df.to_csv('raw_rm_augmented.csv',index=False)
+        df.to_csv('rm_data_augment/raw_rm_augmented.csv',index=False)
     else:
-        df = pd.read_csv('clean_rm_augmented.csv')
+        df = pd.read_csv('rm_data_augment/clean_rm_augmented.csv')
         new_examples["similarity"] = calculate_cosine_similarity(df["reply"].to_list(), df["original_reply"].to_list())
         
         adjustment_factor = 0.5
@@ -182,7 +182,7 @@ def augment(model_name,conf):
         
         df["score"] = adusted_scores
         df = df.drop(columns=["original_reply","original_score"])
-        df.to_csv('rm_augmented.csv',index=False)
+        df.to_csv('rm_data_augment/rm_augmented.csv',index=False)
 
 if __name__ == "__main__":
     config, remaining_args = parse_arguments()

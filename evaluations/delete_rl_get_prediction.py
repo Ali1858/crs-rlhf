@@ -12,9 +12,6 @@ from constants import TOKENIZER_SEPECIAL_TOKENS, DTYPES, CACHE_DIR
 import json
 sigmoid = torch.nn.Sigmoid()
 
-seed = 90
-torch.manual_seed(seed)
-
 
 def get_reward_tokenizer_model(conf,dtype,device_map="auto"):
     print('**** loading reward model ****')
@@ -159,7 +156,7 @@ def generate_text(tokenizer,model,query_tensors,generation_kwargs,batch_size=8):
     # in case we have fewer examples than bs
     batch_size = min(len(query_tensors), batch_size)
     model.eval()
-    for i in range(0, len(query_tensors), batch_size):
+    for i in tqdm(range(0, len(query_tensors), batch_size)):
             # prevent overflow if query tensors are not even multiple of bs
             end_index = min(len(query_tensors), i + batch_size)
 
@@ -231,7 +228,7 @@ def eval(conf):
             new_examples["input_ids"].append(tokenized_question)
     print(f'Eval dataset size: {len(new_examples["query"])}')
 
-    n = 4
+    n = 1
     data_prefix = conf.eval_data.split('/')[-1].split('.')[0].split('_')[-1]
     for i in range(n):
         if n > 1 and i == 0:
