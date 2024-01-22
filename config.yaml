@@ -91,7 +91,7 @@ rm:
   name: LLama-2-7b-oasst-baseline_reward #*rm_ranking_name
   base_model_name: andreaskoepf/llama2-7b-oasst-baseline #*sft_model
   # base_model_name: meta-llama/Llama-2-13b-hf
-  is_abs_rm: true
+  is_abs_rm: false
   int4_training: false
   int8_training: true
   adpater_name: #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
@@ -106,20 +106,20 @@ rm:
     - accuracy
   max_replies: 4
   dataset:
-    # oasst_export:
-    #   val_split: 0.05
-    #   lang: "en,es,de,fr"
-    oasst_export_abs:
+    oasst_export:
       val_split: 0.05
       lang: "en,es,de,fr"
-      abs_oversample_threshold: 0.4
-      label_weight:
-        violence: 0
-        creativity: 0
-        helpfulness: 0
-        humor: 0
-        toxicity: 0
-        quality: 1
+    # oasst_export_abs:
+    #   val_split: 0.05
+    #   lang: "en,es,de,fr"
+    #   abs_oversample_threshold: 0.4
+    #   label_weight:
+    #     violence: 0
+    #     creativity: 0
+    #     helpfulness: 0
+    #     humor: 0
+    #     toxicity: 0
+    #     quality: 1
 
 rl:
   output_dir: output/rl

@@ -90,7 +90,7 @@ def get_query_tensors():
 
 device_map = {"":1}
 perform_rlhf = False #Other SFT
-num_run = 3
+num_run = 0
 gen_kwarg_p_09 = True #When using p sampling and temperature
 # Set it True when evaluating each checkpoint, while evaluating each checkpoint use 'tuning' type and set eval_model name
 eval_checkpoint = False 

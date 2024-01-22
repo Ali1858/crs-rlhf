@@ -88,17 +88,20 @@ reward_model, tokenizer = get_reward_tokenizer_model(reward_model_name,abs_adapt
 
 
 rlhf_model_names = [
-    "LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits",
+    # "LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits",
     #                 "LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5",
-                    "LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
-                    "LLama-2-7b-oasst-baseline_rl_f_crs_025_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
+                    # "LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
+                    # "LLama-2-7b-oasst-baseline_rl_f_crs_025_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
                     # "LLama-2-7b-oasst-baseline_rl_f_crs_0625_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
+                    "LLama-2-7b-oasst-basseline_sft"
                     ]
 
+# glob_rgx = "/*run*.json"
+glob_rgx = "/*.json"
 for n in rlhf_model_names:
     print(f'\n==== calculating reward for the model {n}====')
     eval_path = os.path.join("output/rl",n,"eval_output")
-    all_jsons = glob(eval_path+'/*run*.json')
+    all_jsons = glob(eval_path+glob_rgx)
     for j in all_jsons:
         print(f'**checkpoint:{j}**')
         with open(j,'r') as r_fn:
@@ -145,18 +148,20 @@ def get_ordered_path(paths):
     return sorted_path
 
 rlhf_model_names = ["LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits",
-                    "LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5",
+                    # "LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5",
                     "LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
                     "LLama-2-7b-oasst-baseline_rl_f_crs_025_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
-                    "LLama-2-7b-oasst-baseline_rl_f_crs_0625_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
+                    # "LLama-2-7b-oasst-baseline_rl_f_crs_0625_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5",
+                    # "LLama-2-7b-oasst-basseline_sft"
+
                     ]
-reward_key = 'reward'#,'reward'
+reward_key = 'abs_reward'#,'reward'
 for n in rlhf_model_names:
     print(f'\n==== Stats for model at path {n}====')
     eval_path = os.path.join("output/rl",n,"rewarded_eval")
-    all_jsons = glob(eval_path+'/*run*.json')
-    sorted_path = all_jsons #get_ordered_path(all_jsons)
-    # print(f'sorted_path:{sorted_path}')
+    all_jsons = glob(eval_path+'/final*.json')
+    sorted_path = get_ordered_path(all_jsons) #all_jsons #
+    print(f'sorted_path:{sorted_path}')
     for s in sorted_path:
         print(s.split('/')[-1])
         # print(f"**mean score for checkpoint {s.split('/')[-1].split('_')[-2]}**")
@@ -166,13 +171,16 @@ for n in rlhf_model_names:
             a_rw = []
             c025_rw = []
             c0625_rw = []
+            onereward = []
             for d in data:
                 r_rw.append(d["reward"])
                 a_rw.append(d["abs_reward"])
                 c025_rw.append(d["crs_025_reward"])
                 c0625_rw.append(d["crs_0625_reward"])
-        print(f'rank reward :{np.mean(r_rw)},abs reward:{np.mean(a_rw)}, crs 025:{np.mean(c025_rw)}, crs 0625:{np.mean(c0625_rw)}')
-        # print(f'mean reward score for reward type {"reward_key"} is {np.mean(onereward)} and std {np.std(onereward)}')
+                onereward.append(d[reward_key])
+        print(onereward)
+        # print(f'rank reward :{np.mean(r_rw)},abs reward:{np.mean(a_rw)}, crs 025:{np.mean(c025_rw)}, crs 0625:{np.mean(c0625_rw)}')
+        print(f'mean reward score for reward type {reward_key} is {np.mean(onereward)} and std {np.std(onereward)}')
             
 
 
