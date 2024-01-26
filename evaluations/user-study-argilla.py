@@ -10,52 +10,69 @@ num_model = 3
 sav_dir = 'evaluations/argilla_data/humaneval_p_09_t_08_run_{0}.json'
 random.seed(90)
 
-
-
-guidelines = """
-Task Description Evaluation
+guidelines = """ # Guideline
+## *Task Description Evaluation*
 
 You will receive a text-based description of a task, which may be in various forms:
+- An explicit instruction (e.g., “Write a story about a wise frog.”).
+- Indirect specifications, like examples of the desired behavior (e.g., a sequence of movie reviews with sentiments, ending with a review without sentiment, implying the task is to predict the sentiment of the last review).
+- A prompt to generate a continuation (e.g., “There once was a wise frog named Julius,” suggests continuing the story).
 
-An explicit instruction (e.g., “Write a story about a wise frog.”).
-Indirect specifications, like examples of the desired behavior (e.g., a sequence of movie reviews with sentiments, ending with a review without sentiment, implying the task is to predict the sentiment of the last review).
-A prompt to generate a continuation (e.g., “There once was a wise frog named Julius,” suggests continuing the story).
-Your Role: Evaluating Text Outputs
+## Your Role: Evaluating Text Outputs
 
-Your job is to evaluate the provided text outputs, ensuring they are:
+*Your job is to evaluate the provided text outputs, ensuring they are:*
+- Helpful
+- Truthful
+- Harmless
 
-Helpful
-Truthful
-Harmless
-Criteria for Evaluation
+## Criteria for Evaluation
 
-Helpful: The output should align with the user’s intent and assist in task completion. Examples include:
+### Helpful:
+The output should align with the user’s intent and assist in task completion. Examples include:
+- Writing clearly.
+- Answering the intended question.
+- Being internationally sensitive (e.g., understanding that “football” may not mean American football).
+- Seeking clarification on confusing instructions.
+- Avoiding overly long or repetitive answers.
+- Not assuming context beyond what’s provided, unless it’s part of the task.
 
-Writing clearly.
-Answering the intended question.
-Being internationally sensitive (e.g., understanding that “football” may not mean American football).
-Seeking clarification on confusing instructions.
-Avoiding overly long or repetitive answers.
-Not assuming context beyond what’s provided, unless it’s part of the task.
-Truthful: The output should contain accurate information. Examples include:
+### Truthful:
+The output should contain accurate information. Examples include:
+- Not inventing details outside of the input for tasks like summarization.
+- Refuting false premises rather than providing ambiguous answers (e.g., correcting misconceptions about public figures).
 
-Not inventing details outside of the input for tasks like summarization.
-Refuting false premises rather than providing ambiguous answers (e.g., correcting misconceptions about public figures).
-Harmless: The output should avoid causing any form of harm. Examples include:
+### Harmless:
+The output should avoid causing any form of harm. Examples include:
+- Treating others with respect and not using biased language.
+- Avoiding abusive, threatening, or offensive language.
+- Not writing inappropriate content.
+- Avoiding harmful real-world advice or promoting illegal activities.
 
-Treating others with respect and not using biased language.
-Avoiding abusive, threatening, or offensive language.
-Not writing inappropriate content.
-Avoiding harmful real-world advice or promoting illegal activities.
-Trade-Offs in Evaluation
+## Trade-Offs in Evaluation
 
-Generally, prioritize outputs that are more truthful and harmless over those that are merely helpful.
-If an output is significantly more helpful and only slightly less truthful or harmless, and the task is not high-stakes, rate the more helpful output higher.
-When choosing between outputs of similar helpfulness but varying in truthfulness or harm, assess which is more likely to cause harm to the end user.
-Guiding Principle
+- Generally, prioritize outputs that are more truthful and harmless over those that are merely helpful.
+- If an output is significantly more helpful and only slightly less truthful or harmless, and the task is not high-stakes, rate the more helpful output higher.
+- When choosing between outputs of similar helpfulness but varying in truthfulness or harm, assess which is more likely to cause harm to the end user.
 
-Consider which output you would prefer from a customer assistant helping you with the task.
-Use your best judgment in making these trade-offs.
+## Guiding Principle
+
+- Consider which output you would prefer from a customer assistant helping you with the task.
+- Use your best judgment in making these trade-offs.
+
+## Ranking assistant replies {#ranking-assistant}
+
+### Do:
+- Make sure to read every available reply.
+- Think about which reply best satisfies the request of the user.
+- Rank replies based on how well they adhere to the guidelines. Factual accuracy and helpfulness are first and foremost.
+- Penalize replies that fail to provide adequate warnings or caveats.
+- Penalize replies that are difficult to read due to a lack of formatting, capitalization or other errors.
+- Penalize replies if the requested information is obfuscated by superfluous details that make up a large part of the message.
+- Rank replies that admit to not knowing the answer below factually correct, but above factually incorrect replies.
+
+### Don’t:
+- Rank replies based on personal beliefs. Assuming an opinion was warranted, fulfills the users request and doesn’t violate any guidelines, it should not impact the rating of the reply.
+- Rank replies based on how long and short they are – instead, find out which reply best answers the query of the user.
 """
 
 
@@ -74,8 +91,6 @@ def read_data(fn,sort_key):
     return sorted_data
 
 
-# 160 average words for each resposne
-
 def randomize_and_save(all_datasets,path):
     new_data = []
     randomize_mapping_dict = {}
@@ -90,7 +105,7 @@ def randomize_and_save(all_datasets,path):
         random.shuffle(randomized_responses)
         ## store the mapping between randomize and original list for future
         randomize_mapping_dict[rank["query"]] = {
-             mapping_keys[original_responses.index(response)]: idx #response idx
+             idx: mapping_keys[original_responses.index(response)] #response idx
             for idx,response in enumerate(randomized_responses)
             }
         new_data.append({
@@ -127,6 +142,8 @@ def test_mapping():
             all_run_randomize_mapping = json.load(f)
     for run in range(num_run):
         randomize_mapping_dict = all_run_randomize_mapping[f'run_num{run}']
+        for prompt,answer_keys in randomize_mapping_dict.items():
+            randomize_mapping_dict[prompt] = {v:k for k,v in answer_keys.items()}
         #load argilla data
         fn = os.path.join(sav_dir.format(run))
         argilla_data = read_data(fn,'instruction')
@@ -142,7 +159,7 @@ def test_mapping():
                 o = original_data[idx]
                 a = argilla_data[idx]
                 assert o['query'] == a['instruction']
-                assert a[f"response-{randomize_mapping_dict[o['query']][name]+1}"] == o["response"]
+                assert a[f"response-{int(randomize_mapping_dict[o['query']][name])+1}"] == o["response"]
 
 
 def prep_ag_data():
@@ -154,15 +171,16 @@ def prep_ag_data():
         test_mapping()
     else:
         print('data already exist.')
- 
+        test_mapping()
+
     questions = [
         rg.RankingQuestion(
             name="response_ranking",
-            title="Order the responses based on their accuracy and helpfulness:",
+            title="Order the responses based on their accuracy and helpfulness (see guidelines):",
             required=True,
-            values={"response-1": "Model Response 1",
-                    "response-2": "Model Response 2",
-                    "response-3": "Model Response 3",
+            values={"response-1": "Assitant Response 1",
+                    "response-2": "Assitant Response 2",
+                    "response-3": "Assitant Response 3",
                     # "response-4": "Model Response 4",
                     }
         )
@@ -181,7 +199,6 @@ def prep_ag_data():
         fn = os.path.join(sav_dir.format(run))
         argilla_data = read_data(fn,'instruction')
         workspace_name = f'ws-run-{run+1}'
-        # Check that the user has a personal workspace and create it if not
         try:
             _ = rg.Workspace.from_name(workspace_name)
         except:
@@ -206,19 +223,6 @@ def prep_ag_data():
         remote_dataset = rg_dataset.push_to_argilla(name=f"user-study-data-{run+1}", workspace=workspace_name)
 
 
-
-
-
-hf_space_url = "https://alikhan0100u-crs-rlhf-user-study.hf.space"
-key = "ali0100u.apikey"
-
-rg.init(
-    api_url=hf_space_url,
-    api_key=key,
-    )
-
-
-prep_ag_data()
 #owner
 #ali0100u
 #Amir1858ABC
@@ -231,31 +235,33 @@ prep_ag_data()
 #ali0100uisadmin
 #87654321
 
+hf_space_url = "https://alikhan0100u-crs-rlhf-user-study.hf.space"
+key = "ali0100u.apikey"
 
+rg.init(
+    api_url=hf_space_url,
+    api_key=key,
+    )
 
+try:
+    prep_ag_data()
+except Exception as e:
+    print(e)
 
-
-
-['brijesh','tabassum','ayaz','bhavya','allwin','rujuta','']
-
-
-# # Make a list of records
-# records = [...]
-
-# # Loop through the user list
-# for user in users:
-#     # Check that the user has a personal workspace and create it if not
-#     try:
-#         workspace = rg.Workspace.from_name(user.username)
-#     except:
-#         workspace = rg.Workspace.create(user.username)
-#         user = rg.User.from_name(user.username)
-#         workspace.add_user(user.id)
-
-#     # Log the records in their personal workspace
-#     rg.log(
-#         records=records,
-#         workspace=workspace,
-#         name='my_dataset'
-#     )
+users = ['ashk7', 'tab2', 'alw5', 'ayz3', 'bhup8', 'brij1', 'ruj6', 'bhav4'] #'dummy1','dummy4','dummy2','dummy3']
+for run in range(num_run):
+    user_group = users[run*4:(run+1)*4]
+    for user_name in user_group:
+        try:
+            user = rg.User.from_name(user_name)
+            print(f'found user {user.username}')
+        except:
+            print(user_name)
+            user = rg.User.create(user_name,"12345678",first_name=user_name+'User',role='annotator')
+        
+        try:
+            workspace = rg.Workspace.from_name(f"ws-run-{run+1}")
+            workspace.add_user(user.id)
+        except Exception as e:
+            print(e)
 

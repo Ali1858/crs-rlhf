@@ -89,12 +89,12 @@ def get_query_tensors():
     return examples
 
 device_map = {"":1}
-perform_rlhf = False #Other SFT
-num_run = 0
+perform_rlhf = True #Other SFT
+num_run = 3
 gen_kwarg_p_09 = True #When using p sampling and temperature
 # Set it True when evaluating each checkpoint, while evaluating each checkpoint use 'tuning' type and set eval_model name
 eval_checkpoint = False 
-eval_type = "final" #Type from: final, tuning, and extra
+eval_type = "humaneval" #Type from: final, tuning, and extra
 model_name = "andreaskoepf/llama2-7b-oasst-baseline"
 eval_model_name = None #"rank_002" Only applicable when evaualting each checkpoint
 
@@ -143,7 +143,7 @@ if eval_model_name:
 ## Select the dataset
 data_fn_dict = {"tuning":'eval_hp_tuning.json',
                 "final":"eval_final.json",
-                "humaneval":"eval_humaneval.json"
+                "humaneval":"eval_humaneval_handpicked.json"
                 }
 
 b_model = transformers.AutoModelForCausalLM.from_pretrained(

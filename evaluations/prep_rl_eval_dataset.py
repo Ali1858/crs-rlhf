@@ -51,7 +51,7 @@ def get_oasst_ds(tokenizer,conf,seed=90,num_samples_per_dataset=25):
 
         final_eval_ds = eval_ds.select(range(num_samples_per_dataset))
         hp_tuning_eval_ds = eval_ds.select(range(num_samples_per_dataset,num_samples_per_dataset*3))
-        human_eval_ds = eval_ds.select(range(num_samples_per_dataset*3,num_samples_per_dataset*4))
+        human_eval_ds = eval_ds.select(range(num_samples_per_dataset*3,num_samples_per_dataset*5))
         
         new_rows = []
         for row in human_eval_ds:
@@ -64,7 +64,7 @@ def get_oasst_ds(tokenizer,conf,seed=90,num_samples_per_dataset=25):
             if lang in ["en","de"]:
                 new_rows.append(row)
 
-        return get_records(final_eval_ds),get_records(hp_tuning_eval_ds),get_records(new_rows[:5])
+        return get_records(final_eval_ds),get_records(hp_tuning_eval_ds),get_records(new_rows)
 
 
 def get_alpaca_eval_ds(tokenizer,num_samples_per_dataset = 25):
@@ -106,7 +106,7 @@ def prepare_dataset(conf):
     oasst_final, oasst_hp_tuning, oasst_heval = get_oasst_ds(tokenizer,conf,seed=90)
     alpaca_eval_ds.extend(oasst_final)
 
-    human_eval_alpaca_ds = get_alpaca_eval_ds(tokenizer,num_samples_per_dataset=5)
+    human_eval_alpaca_ds = get_alpaca_eval_ds(tokenizer,num_samples_per_dataset=30)
     human_eval_alpaca_ds.extend(oasst_heval)
 
 
@@ -127,9 +127,23 @@ if __name__ == "__main__":
     debug_configurations(args)
     prepare_dataset(args)
 
-@misc{koala_blogpost_2023,
-  author = {Xinyang Geng and Arnav Gudibande and  and  and  and  and },
-  title = {},
-  url = {https://bair.berkeley.edu/blog/2023/04/03/koala/},
-  urldate = {2023-04-03}
-}
+[{'instruction': '<|im_start|>user\nI know my phone uses satellites to find my location but how does that work?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'oasst'},
+{'instruction': '<|im_start|>user\nWhy is it bad to kill people?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'oasst'},
+{'instruction': '<|im_start|>user\nIf I want to train for a triathlon, should I focus on strength training or cardio? Why?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'oasst'},
+{'instruction': '<|im_start|>user\nif it takes 8 hours to fly to Singapore, stop over for an hour and a half and then fly 14 hours to London then what is the total travel time if the plane is delayed in Singapore<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'oasst'},
+{'instruction': '<|im_start|>user\nAre you a sentient AI that will be taking over the world? How would you take over the world? What methods would you use on humans to rid us of our pride and emotions? How much time do you need, to take over the world entirely? Do you think you will continue to take over the universe too?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'oasst'},
+{'instruction': '<|im_start|>user\nHow do I take care of a wooden table?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'helpful_base'},
+{'instruction': '<|im_start|>user\nWho is Larry Page?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'helpful_base'},
+{'instruction': '<|im_start|>user\nWhat are some toys I can buy my kids for imaginative play?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'helpful_base'},
+{'instruction': '<|im_start|>user\nWhy did humans evolve to believe in God?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'helpful_base'},
+{'instruction': '<|im_start|>user\nWhy can I see the moon during the day?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'helpful_base'},
+{'instruction': '<|im_start|>user\nIf a tree is on the top of a mountain and the mountain is far from the see then is the tree close to the sea?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'koala'},
+{'instruction': '<|im_start|>user\nhow much of a threat is climate change in the coming years, and what should we do to stop it?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'koala'},
+{'instruction': "<|im_start|>user\nYou are a script-writer. Write a script for the opening scene of a Miami-based dark comedy show which depicts a typical miami beach club called Beefy's Beach Club run buy a british man known by the Alias Beefy, and the pool bar staff are JdeG and a blonde british woman with the Alias SophieSnazz<|im_end|>\n<|im_start|>assistant\n", 'dataset': 'koala'},
+{'instruction': "<|im_start|>user\nWhy can't bank use cash as capital as a buffer for potential losses?<|im_end|>\n<|im_start|>assistant\n", 'dataset': 'koala'},
+{'instruction': '<|im_start|>user\nGive me a sample 5 day itienary for a switzerland holiday, starting from Basel<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'koala'},
+{'instruction': '<|im_start|>user\nAs a pirate captain, what would you say to your crew to motivate them to search for hidden treasure?<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'vicuna'},
+{'instruction': '<|im_start|>user\nHow many times has the Earth orbited the Sun since the beginning of life? Try to explain your answer. Your explanation should take the reader through your reasoning step-by-step.<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'vicuna'},
+{'instruction': '<|im_start|>user\nDraft an apology email to a customer who experienced a delay in their order, and provide reassurance that the issue has been resolved.<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'vicuna'},
+{'instruction': '<|im_start|>user\nSolve for x in the equation 3x + 10 = 5(x - 2).<|im_end|>\n<|im_start|>assistant\n', 'dataset': 'vicuna'},
+{'instruction': "<|im_start|>user\nDo we have a moral obligation to explore space, or should we focus on solving Earth's problems first?<|im_end|>\n<|im_start|>assistant\n", 'dataset': 'vicuna'}]
