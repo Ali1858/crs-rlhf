@@ -1,21 +1,7 @@
 cache
 *.pyc
 __pycache__
-wandb
 .DS_Store
-meta-llama
-toy/
-*.pkl
-qlora-meta-llama/
 .ipynb_checkpoints/
 .vscode
-output
-brad_ppo.py
-eval report.txt
-trlx_ppo.py
-gpt_x_neo.py
-model_training/trlx_trainer.py
-data
-alpaca_eval
-*.json
-*.csv
+

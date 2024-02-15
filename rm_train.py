@@ -133,7 +133,7 @@ def create_trainer(conf):
         print('changing model pad token id')
         model.config.pad_token_id = tokenizer.pad_token_id
     if conf.is_abs_rm:
-        aug_ds = pd.read_csv('rm_augmented.csv')
+        aug_ds = pd.read_csv('rm_data_augment/rm_augmented.csv')
         aug_list = aug_ds.values.tolist()
         aug_dataset = CustomDataset(aug_list)
         train_ds = ConcatDataset([train_ds, aug_dataset])

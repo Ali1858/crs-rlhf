@@ -45,7 +45,7 @@ default:
     use_system_prefix: false
     system_prefix: null
 
-
+## pre sft and sft not used in final training
 pre_sft:
   output_dir: output/sft
   name: *pre_sft_name
@@ -91,7 +91,7 @@ rm:
   name: LLama-2-7b-oasst-baseline_reward #*rm_ranking_name
   base_model_name: andreaskoepf/llama2-7b-oasst-baseline #*sft_model
   # base_model_name: meta-llama/Llama-2-13b-hf
-  is_abs_rm: false
+  is_abs_rm: true
   int4_training: false
   int8_training: true
   adpater_name: #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token
@@ -106,48 +106,35 @@ rm:
     - accuracy
   max_replies: 4
   dataset:
-    oasst_export:
-      val_split: 0.05
-      lang: "en,es,de,fr"
-    # oasst_export_abs:
+    # oasst_export:
     #   val_split: 0.05
     #   lang: "en,es,de,fr"
-    #   abs_oversample_threshold: 0.4
-    #   label_weight:
-    #     violence: 0
-    #     creativity: 0
-    #     helpfulness: 0
-    #     humor: 0
-    #     toxicity: 0
-    #     quality: 1
+    oasst_export_abs:
+      val_split: 0.05
+      lang: "en,es,de,fr"
+      abs_oversample_threshold: 0.4
+      label_weight:
+        violence: 0
+        creativity: 0
+        helpfulness: 0
+        humor: 0
+        toxicity: 0
+        quality: 1
 
 rl:
   output_dir: output/rl
   name: LLama-2-7b-oasst-baseline_rl #*rl_fine_tune
   debug_set: 6
-  # eval_sft: False
-  # eval_data: data/eval_extra.json
-  # peft_id: output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5
-  # # output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5
-  # # output/rl/LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits #_adjusted 
-  # # output/rl/LLama-2-7b-oasst-baseline_rl_bs16_kl_001_clip_04_512_max_token_with_pad_eos_lr_141e5 
-  # output_json_prefix: eval_extra
   model_name: andreaskoepf/llama2-7b-oasst-baseline #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token/merged 
   reward_model_name: andreaskoepf/llama2-7b-oasst-baseline #output/sft/LLama-2-7b_crs_oasst_sft_bs64_ep_1_not_quant_pad_token/merged
   crs: true
   crs_weight: 0.25
   adafactor: False
   load_reward_type: #ranking #abs or ranking
-  # abs_adapter_name: output/rm/LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic #output/rm/LLama-2-7b_crs_oasst_sft_reward_abs_bs_128_ep_1_logistic
   abs_adapter_name: output/rm/LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic_s_075_augment_and__under
-  #output/rm/LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic_wgt_loss_075_strength_only_quality_eos_token
-  #LLama-2-7b-oasst-baseline_reward_abs_bs128_ep_1_8bit_logistic_wgt_loss_075_strength_only_quality
   ranking_adapter_name: output/rm/LLama-2-7b-oasst-baseline_reward_ranking_bs64_ep_1_8bit_bf16_eos_token
-  #LLama-2-7b-oasst-baseline_reward_ranking_bs64_ep_1_8bit_bf16 
-  #LLama-2-7b_crs_oasst_sft_reward_ranking_bs_64_ep_1_sft_no_quantized
   seed: 999
   log_step: 5 # Step interval for logging.
-  # eval_steps: 100
   save_steps: 40
   ppo_config:
     steps: 20000 # Number of steps.

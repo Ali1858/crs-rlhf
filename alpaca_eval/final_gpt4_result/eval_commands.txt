@@ -1,0 +1,103 @@
+1. 
+alpaca_eval --model_outputs 'alpaca_eval/final/bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/f_crs_0625_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn
+
+Result
+-----
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+rank_002,44.0,4.988876515698589,44,56,0,100,community,798
+
+=====
+=====
+2.
+alpaca_eval --model_outputs 'alpaca_eval/final/bs16_kl_001_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/abs_quality_rw_075_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn
+
+
+Result
+-----
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+rank_001,36.0,4.824181513244218,36,64,0,100,community,1146
+
+=====
+=====
+3.
+alpaca_eval --model_outputs 'alpaca_eval/final/bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/abs_quality_rw_075_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+
+Result
+-----
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+rank_002,34.0,4.760952285695233,34,66,0,100,community,798
+=====
+4.
+alpaca_eval --model_outputs 'alpaca_eval/LLama-2-7b-oasst-baseline_rl_abs_quality_rw_075_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5_logits/alpaca_final_p_01_run_1_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/LLama-2-7b-oasst-baseline_rl_bs16_kl_002_clip_04_512_max_token_with_pad_eos_lr_141e5/alpaca_final_p_01_run_1_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+
+Result
+-----
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+Current model,63.0,4.8523658709390975,63,37,0,100,community,1166
+===
+5.
+alpaca_eval --model_outputs 'alpaca_eval/final/f_crs_0625_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/abs_quality_rw_075_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+
+Result
+-----
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+crs_0625,35.0,4.793724854411022,35,65,0,100,community,895
+=====
+6.
+alpaca_eval --model_outputs 'alpaca_eval/final/f_crs_025_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/abs_quality_rw_075_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+crs_025,37.0,4.8523658709390975,37,63,0,100,community,909
+=====
+7.
+alpaca_eval --model_outputs 'alpaca_eval/final/bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/LLama-2-7b-oasst-basseline_sftp_09_t_08_sft_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+rank_002,28.999999999999996,4.560480215720688,29,71,0,100,community,798
+
+
+=====
+8.
+alpaca_eval --model_outputs 'alpaca_eval/final/bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/f_crs_025_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+rank_002,39.0,4.902071300001973,39,61,0,100,community,798
+
+=====
+9.
+alpaca_eval --model_outputs 'alpaca_eval/final/abs_quality_rw_075_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/LLama-2-7b-oasst-basseline_sftp_09_t_08_sft_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+abs,45.0,5.0,45,55,0,100,community,1102
+
+
+=====
+10.
+alpaca_eval --model_outputs 'alpaca_eval/final/f_crs_025_bs16_kl_002_clip_04p_09_t_08_rlhf_output.json' \
+    --reference_outputs 'alpaca_eval/final/LLama-2-7b-oasst-basseline_sftp_09_t_08_sft_output.json' \
+    --annotators_config 'alpaca_eval_gpt4_turbo_fn'
+
+,win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length
+crs_025,39.0,4.902071300001973,39,61,0,100,community,909
+
